@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Head from "next/head";
 
 const DOCK_SECTIONS = [
@@ -97,6 +97,9 @@ export default function HaraMarina() {
   const [qDragIdx,   setQDragIdx]   = useState(null);
   const [qDragOver,  setQDragOver]  = useState(null);
   const [weather,    setWeather]    = useState(null);
+  const [weatherShown, setWeatherShown] = useState(true);
+  const [weatherPos, setWeatherPos]   = useState({ x: null, y: null }); // null = use default top/right
+  const weatherDragRef = useRef(null);
 
   // ── Load from KV on mount ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -220,13 +223,17 @@ export default function HaraMarina() {
   const statusNext  = {waiting:"active",active:"done",done:"waiting"};
 
   const weatherBoxStyle = {
-    position:"absolute", top:20, right:90, width:230,
-    background:"linear-gradient(180deg, rgba(13,36,56,0.92), rgba(9,28,44,0.92))",
-    border:"1px solid rgba(126,171,200,0.2)",
+    position:"absolute",
+    ...(weatherPos.x !== null
+      ? { left: weatherPos.x, top: weatherPos.y }
+      : { top: 20, right: 90 }),
+    width:230,
+    background:"linear-gradient(180deg, rgba(13,36,56,0.55), rgba(9,28,44,0.55))",
+    border:"1px solid rgba(126,171,200,0.18)",
     borderRadius:8,
-    boxShadow:"0 4px 18px rgba(0,0,0,0.5), inset 0 0 30px rgba(30,80,120,0.15)",
-    backdropFilter:"blur(6px)",
-    WebkitBackdropFilter:"blur(6px)",
+    boxShadow:"0 4px 18px rgba(0,0,0,0.4), inset 0 0 30px rgba(30,80,120,0.1)",
+    backdropFilter:"blur(8px)",
+    WebkitBackdropFilter:"blur(8px)",
     zIndex:5,
     fontFamily:"'Georgia','Times New Roman',serif",
   };
@@ -401,9 +408,42 @@ export default function HaraMarina() {
   }
 
   function WeatherPanel() {
+    if (!weatherShown) return null;
+
+    function startDrag(e) {
+      // Only left button; ignore clicks on the close button
+      if (e.button !== 0) return;
+      const isTouch = e.type === "touchstart";
+      const point = isTouch ? e.touches[0] : e;
+      const node = weatherDragRef.current;
+      if (!node) return;
+      const rect = node.getBoundingClientRect();
+      const parent = node.offsetParent?.getBoundingClientRect() ?? { left: 0, top: 0 };
+      const offX = point.clientX - rect.left;
+      const offY = point.clientY - rect.top;
+      e.preventDefault();
+      function move(ev) {
+        const p = ev.touches ? ev.touches[0] : ev;
+        const x = p.clientX - parent.left - offX;
+        const y = p.clientY - parent.top - offY;
+        setWeatherPos({ x, y });
+      }
+      function up() {
+        window.removeEventListener("mousemove", move);
+        window.removeEventListener("mouseup", up);
+        window.removeEventListener("touchmove", move);
+        window.removeEventListener("touchend", up);
+      }
+      window.addEventListener("mousemove", move);
+      window.addEventListener("mouseup", up);
+      window.addEventListener("touchmove", move, { passive:false });
+      window.addEventListener("touchend", up);
+    }
+
     if (!weather) {
       return (
-        <div style={{...weatherBoxStyle, fontSize:10, color:"#5a8aaa", textAlign:"center"}}>
+        <div ref={weatherDragRef} style={{...weatherBoxStyle, fontSize:10, color:"#5a8aaa", textAlign:"center", padding:"10px 14px", cursor:"grab"}}
+          onMouseDown={startDrag} onTouchStart={startDrag}>
           ◌ loading Loksa station…
         </div>
       );
@@ -426,13 +466,19 @@ export default function HaraMarina() {
     );
     const updated = new Date(w.timestamp).toLocaleTimeString("et-EE", {hour:"2-digit", minute:"2-digit"});
     return (
-      <div style={weatherBoxStyle}>
-        <div style={{padding:"10px 14px 8px",borderBottom:"1px solid rgba(126,171,200,0.1)"}}>
+      <div ref={weatherDragRef} style={weatherBoxStyle}>
+        <div onMouseDown={startDrag} onTouchStart={startDrag}
+          style={{padding:"10px 14px 8px",borderBottom:"1px solid rgba(126,171,200,0.1)",cursor:"grab",userSelect:"none",position:"relative"}}>
           <div style={{fontSize:8,letterSpacing:3,color:"#7eabc8",textTransform:"uppercase"}}>⚓ Loksa Station · ~10 km E</div>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:2}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:2,paddingRight:18}}>
             <div style={{fontSize:14,fontWeight:"bold",color:"#e8f4f8",letterSpacing:2}}>WEATHER</div>
             <div style={{fontSize:9,color:"#5a8aaa"}}>● {updated}</div>
           </div>
+          <button onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()}
+            onClick={()=>setWeatherShown(false)}
+            title="Close"
+            style={{position:"absolute",top:6,right:8,background:"none",border:"none",
+              color:"#7eabc8",cursor:"pointer",fontSize:16,lineHeight:1,padding:"2px 6px"}}>×</button>
         </div>
         <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"12px 8px 4px"}}>
           <WindRose dir={dir} speed={speed} gust={gust}/>
@@ -459,6 +505,20 @@ export default function HaraMarina() {
           )}
         </div>
       </div>
+    );
+  }
+
+  function WeatherReopen() {
+    if (weatherShown) return null;
+    return (
+      <button onClick={()=>setWeatherShown(true)} title="Show weather"
+        style={{position:"absolute",top:20,right:36,zIndex:5,
+          background:"rgba(13,36,56,0.6)",border:"1px solid rgba(126,171,200,0.25)",
+          borderRadius:6,padding:"6px 10px",cursor:"pointer",
+          color:"#c8e0f0",fontSize:11,letterSpacing:1.5,fontFamily:"inherit",
+          backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)"}}>
+        ⚓ Weather
+      </button>
     );
   }
 
@@ -668,6 +728,7 @@ export default function HaraMarina() {
                 padding:"28px 0 28px 20px"}}>
                 <WaterLines/>
                 <WeatherPanel/>
+                <WeatherReopen/>
                 <div style={{position:"absolute",right:0,top:0,bottom:0,width:20,
                   background:"linear-gradient(to left,#3a2c18,#2a2010,transparent)",
                   borderLeft:"2px solid #6a5028",zIndex:3}}/>
