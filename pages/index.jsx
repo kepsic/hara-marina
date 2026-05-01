@@ -267,21 +267,32 @@ export default function HaraMarina() {
           outline:isOver?"2px dashed rgba(240,192,64,0.6)":isSrc?"1px solid rgba(0,229,255,0.4)":"none",
           outlineOffset:2,transition:"background 0.15s,opacity 0.15s",userSelect:"none",
           animation:isSrc?"pulse 1.2s infinite":"none"}}>
-        <div style={{fontSize:14,color:"rgba(200,160,80,0.3)",marginRight:4,flexShrink:0,cursor:"grab"}}>⠿</div>
-        <BoatShape color={boat.color} isSelected={isSel} isSwapSrc={isSrc} isOver={isOver||isTgt}/>
-        <div style={{marginLeft:8,fontSize:11,fontWeight:"bold",letterSpacing:1.2,
+        <div style={{fontSize:14,color:"rgba(200,160,80,0.3)",marginRight:8,flexShrink:0,cursor:"grab"}}>⠿</div>
+        <div style={{fontSize:11,fontWeight:"bold",letterSpacing:1.2,
           color:isSrc?"#00e5ff":isSel?"#f0c040":"#c8e0f0",textTransform:"uppercase",flexShrink:0,minWidth:90}}>
           {boat.name}
           {inQ&&<span style={{marginLeft:6,fontSize:8,color:"#f0a020"}}>🏗</span>}
           {isSrc&&<div style={{fontSize:8,color:"#00e5ff",fontWeight:"normal",marginTop:1}}>tap destination →</div>}
         </div>
-        {/* Mooring ropes — stretch from boat to dock */}
-        <div style={{flex:1,minWidth:24,height:24,marginLeft:8,opacity:0.55}}>
-          <svg width="100%" height="24" viewBox="0 0 100 24" preserveAspectRatio="none" style={{display:"block"}}>
-            <line x1="0" y1="12" x2="100" y2="4"  stroke="#c8a050" strokeWidth="1" strokeDasharray="4,3" vectorEffect="non-scaling-stroke"/>
-            <line x1="0" y1="12" x2="100" y2="20" stroke="#c8a050" strokeWidth="1" strokeDasharray="4,3" vectorEffect="non-scaling-stroke"/>
+        {/* Mooring buoy out in the water */}
+        <div style={{flexShrink:0,marginLeft:10,display:"flex",alignItems:"center",justifyContent:"center"}}
+          title="Mooring buoy">
+          <svg width="14" height="14" viewBox="0 0 14 14">
+            <circle cx="7" cy="7" r="5"
+              fill="radial-gradient(#f0c040,#8a6a10)"
+              style={{fill:"#c8a050"}}
+              stroke="#5a4010" strokeWidth="1"/>
+            <circle cx="5.5" cy="5.5" r="1.5" fill="rgba(255,240,200,0.7)"/>
           </svg>
         </div>
+        {/* Mooring ropes — stretch from buoy to boat (near dock) */}
+        <div style={{flex:1,minWidth:24,height:24,opacity:0.55}}>
+          <svg width="100%" height="24" viewBox="0 0 100 24" preserveAspectRatio="none" style={{display:"block"}}>
+            <line x1="0" y1="12" x2="100" y2="6"  stroke="#c8a050" strokeWidth="1" strokeDasharray="4,3" vectorEffect="non-scaling-stroke"/>
+            <line x1="0" y1="12" x2="100" y2="18" stroke="#c8a050" strokeWidth="1" strokeDasharray="4,3" vectorEffect="non-scaling-stroke"/>
+          </svg>
+        </div>
+        <BoatShape color={boat.color} isSelected={isSel} isSwapSrc={isSrc} isOver={isOver||isTgt}/>
       </div>
     );
   }
