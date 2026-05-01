@@ -1,0 +1,5 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body, #__next { height: 100%; }
+body { background: #091820; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+[draggable]:active { cursor: grabbing; }
