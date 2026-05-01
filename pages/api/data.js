@@ -1,4 +1,10 @@
-import { kv } from "@vercel/kv";
+import { Redis } from "@upstash/redis";
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+  automaticDeserialization: false,
+});
 
 export default async function handler(req, res) {
   const { key } = req.query;
@@ -6,7 +12,7 @@ export default async function handler(req, res) {
 
   if (req.method === "GET") {
     try {
-      const value = await kv.get(key);
+      const value = await redis.get(key);
       return res.status(200).json({ value: value ?? null });
     } catch (e) {
       return res.status(500).json({ error: e.message });
@@ -16,7 +22,7 @@ export default async function handler(req, res) {
   if (req.method === "POST") {
     try {
       const { value } = req.body;
-      await kv.set(key, value);
+      await redis.set(key, value);
       return res.status(200).json({ ok: true });
     } catch (e) {
       return res.status(500).json({ error: e.message });
