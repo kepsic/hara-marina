@@ -239,20 +239,20 @@ export default function HaraMarina() {
           outlineOffset:2,transition:"background 0.15s,opacity 0.15s",userSelect:"none",
           animation:isSrc?"pulse 1.2s infinite":"none"}}>
         <div style={{fontSize:14,color:"rgba(200,160,80,0.3)",marginRight:4,flexShrink:0,cursor:"grab"}}>⠿</div>
-        <div style={{marginRight:4,opacity:0.4,flexShrink:0}}>
-          <svg width="24" height="20" viewBox="0 0 24 20">
-            <line x1="24" y1="5" x2="0" y2="1" stroke="#c8a050" strokeWidth="1" strokeDasharray="3,2"/>
-            <line x1="24" y1="15" x2="0" y2="19" stroke="#c8a050" strokeWidth="1" strokeDasharray="3,2"/>
-          </svg>
-        </div>
         <BoatShape color={boat.color} isSelected={isSel} isSwapSrc={isSrc} isOver={isOver||isTgt}/>
         <div style={{marginLeft:8,fontSize:11,fontWeight:"bold",letterSpacing:1.2,
-          color:isSrc?"#00e5ff":isSel?"#f0c040":"#c8e0f0",textTransform:"uppercase",flex:1}}>
+          color:isSrc?"#00e5ff":isSel?"#f0c040":"#c8e0f0",textTransform:"uppercase",flexShrink:0,minWidth:90}}>
           {boat.name}
           {inQ&&<span style={{marginLeft:6,fontSize:8,color:"#f0a020"}}>🏗</span>}
           {isSrc&&<div style={{fontSize:8,color:"#00e5ff",fontWeight:"normal",marginTop:1}}>tap destination →</div>}
         </div>
-        <div style={{width:30,height:1,background:"linear-gradient(to right,rgba(200,160,80,0.2),rgba(200,160,80,0.6))",flexShrink:0}}/>
+        {/* Mooring ropes — stretch from boat to dock */}
+        <div style={{flex:1,minWidth:24,height:24,marginLeft:8,opacity:0.55}}>
+          <svg width="100%" height="24" viewBox="0 0 100 24" preserveAspectRatio="none" style={{display:"block"}}>
+            <line x1="0" y1="12" x2="100" y2="4"  stroke="#c8a050" strokeWidth="1" strokeDasharray="4,3" vectorEffect="non-scaling-stroke"/>
+            <line x1="0" y1="12" x2="100" y2="20" stroke="#c8a050" strokeWidth="1" strokeDasharray="4,3" vectorEffect="non-scaling-stroke"/>
+          </svg>
+        </div>
       </div>
     );
   }
