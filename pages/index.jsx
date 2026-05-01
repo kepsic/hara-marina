@@ -96,6 +96,7 @@ export default function HaraMarina() {
   const [addType,    setAddType]    = useState("in");
   const [qDragIdx,   setQDragIdx]   = useState(null);
   const [qDragOver,  setQDragOver]  = useState(null);
+  const [weather,    setWeather]    = useState(null);
 
   // ── Load from KV on mount ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -117,6 +118,22 @@ export default function HaraMarina() {
       if (q) setQueue(q);
     }, 30000);
     return () => clearInterval(t);
+  }, []);
+
+  // Live weather from Loksa station (~10 km east of Hara, same bay)
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const r = await fetch("/api/weather");
+        if (!r.ok) return;
+        const j = await r.json();
+        if (!cancelled && !j.error) setWeather(j);
+      } catch {}
+    }
+    load();
+    const t = setInterval(load, 5 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(t); };
   }, []);
 
   function updateBoats(fn) {
@@ -202,6 +219,18 @@ export default function HaraMarina() {
   const statusLabel = {waiting:"Waiting",active:"🏗 Active",done:"✓ Done"};
   const statusNext  = {waiting:"active",active:"done",done:"waiting"};
 
+  const weatherBoxStyle = {
+    position:"absolute", top:20, right:90, width:230,
+    background:"linear-gradient(180deg, rgba(13,36,56,0.92), rgba(9,28,44,0.92))",
+    border:"1px solid rgba(126,171,200,0.2)",
+    borderRadius:8,
+    boxShadow:"0 4px 18px rgba(0,0,0,0.5), inset 0 0 30px rgba(30,80,120,0.15)",
+    backdropFilter:"blur(6px)",
+    WebkitBackdropFilter:"blur(6px)",
+    zIndex:5,
+    fontFamily:"'Georgia','Times New Roman',serif",
+  };
+
   // ── Field ──────────────────────────────────────────────────────────────────────
   function Field({label,fieldKey,placeholder}) {
     return (
@@ -277,6 +306,146 @@ export default function HaraMarina() {
           <div style={{position:"absolute",right:-18,top:0,bottom:0,width:18,
             background:"linear-gradient(to right,rgba(90,72,40,0.8),rgba(60,48,28,0.4))",
             borderTop:"1px solid rgba(138,106,48,0.3)",borderBottom:"1px solid rgba(138,106,48,0.3)"}}/>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Weather (Loksa station) ────────────────────────────────────────────────────
+  function compass(deg) {
+    const dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+    return dirs[Math.round(((deg % 360) / 22.5)) % 16];
+  }
+  function beaufort(ms) {
+    const table = [[0.3,0],[1.5,1],[3.3,2],[5.5,3],[7.9,4],[10.7,5],[13.8,6],[17.1,7],[20.7,8],[24.4,9],[28.4,10],[32.6,11]];
+    for (const [lim, b] of table) if (ms < lim) return b;
+    return 12;
+  }
+  function WindRose({ dir, speed, gust }) {
+    // dir = degrees the wind is coming FROM (meteorological convention)
+    const size = 150, c = size / 2, r = c - 12;
+    const cardinals = [["N",0],["E",90],["S",180],["W",270]];
+    const ticks = Array.from({ length: 16 }, (_, i) => i * 22.5);
+    const hasDir = typeof dir === "number" && !isNaN(dir);
+    const arrowFrom = hasDir ? dir : 0;
+    // Arrow body points FROM origin direction TO center (showing where wind is going)
+    const rad = (a) => (a - 90) * Math.PI / 180;
+    const tipX = c - Math.cos(rad(arrowFrom)) * (r - 8);
+    const tipY = c - Math.sin(rad(arrowFrom)) * (r - 8);
+    const tailX = c + Math.cos(rad(arrowFrom)) * (r - 18);
+    const tailY = c + Math.sin(rad(arrowFrom)) * (r - 18);
+    return (
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{display:"block"}}>
+        {/* outer ring */}
+        <circle cx={c} cy={c} r={r} fill="rgba(8,28,44,0.55)" stroke="rgba(126,171,200,0.35)" strokeWidth="1"/>
+        <circle cx={c} cy={c} r={r-10} fill="none" stroke="rgba(126,171,200,0.12)" strokeWidth="1"/>
+        {/* tick marks */}
+        {ticks.map((a, i) => {
+          const major = i % 4 === 0;
+          const len = major ? 7 : 3;
+          const x1 = c + Math.cos(rad(a)) * r;
+          const y1 = c + Math.sin(rad(a)) * r;
+          const x2 = c + Math.cos(rad(a)) * (r - len);
+          const y2 = c + Math.sin(rad(a)) * (r - len);
+          return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2}
+            stroke={major ? "#c8a050" : "rgba(126,171,200,0.4)"} strokeWidth={major ? 1.5 : 1}/>;
+        })}
+        {/* cross-hairs */}
+        <line x1={c} y1={6} x2={c} y2={size-6} stroke="rgba(126,171,200,0.08)" strokeWidth="0.8"/>
+        <line x1={6} y1={c} x2={size-6} y2={c} stroke="rgba(126,171,200,0.08)" strokeWidth="0.8"/>
+        {/* arrow — only if direction known */}
+        {hasDir && (
+          <g>
+            <defs>
+              <marker id="arrowhead" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+                <path d="M0,0 L6,3 L0,6 Z" fill="#f0c040"/>
+              </marker>
+            </defs>
+            <line x1={tailX} y1={tailY} x2={tipX} y2={tipY}
+              stroke="#f0c040" strokeWidth="3" strokeLinecap="round" markerEnd="url(#arrowhead)"
+              style={{filter:"drop-shadow(0 0 4px rgba(240,192,64,0.6))"}}/>
+          </g>
+        )}
+        {/* cardinal labels */}
+        {cardinals.map(([lbl, a]) => {
+          const x = c + Math.cos(rad(a)) * (r + 7);
+          const y = c + Math.sin(rad(a)) * (r + 7) + 3;
+          return (
+            <text key={lbl} x={x} y={y} textAnchor="middle"
+              fontSize="10" fontWeight="bold" letterSpacing="1"
+              fill={lbl === "N" ? "#f0c040" : "#c8e0f0"}
+              fontFamily="Georgia, serif">{lbl}</text>
+          );
+        })}
+        {/* center wind speed */}
+        <text x={c} y={c-2} textAnchor="middle" fontSize="20" fontWeight="bold" fill="#e8f4f8" fontFamily="Georgia, serif">
+          {typeof speed === "number" ? speed.toFixed(1) : "—"}
+        </text>
+        <text x={c} y={c+12} textAnchor="middle" fontSize="8" letterSpacing="2" fill="#7eabc8">M/S</text>
+        {typeof gust === "number" && gust > 0 && (
+          <text x={c} y={c+24} textAnchor="middle" fontSize="8" fill="rgba(240,192,64,0.7)">gust {gust.toFixed(1)}</text>
+        )}
+      </svg>
+    );
+  }
+
+  function WeatherPanel() {
+    if (!weather) {
+      return (
+        <div style={{...weatherBoxStyle, fontSize:10, color:"#5a8aaa", textAlign:"center"}}>
+          ◌ loading Loksa station…
+        </div>
+      );
+    }
+    const w = weather;
+    const dir = w.winddirection;
+    const speed = w.windspeed;
+    const gust = w.windspeedmax;
+    const bf = typeof speed === "number" ? beaufort(speed) : null;
+    const stat = (label, value, unit, color = "#e8f4f8") => (
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",
+        padding:"4px 0",borderBottom:"1px solid rgba(126,171,200,0.06)"}}>
+        <span style={{fontSize:9,letterSpacing:1.5,color:"#7eabc8",textTransform:"uppercase"}}>{label}</span>
+        <span style={{fontSize:12,fontWeight:"bold",color}}>
+          {value === null || value === undefined || value === "" ? <em style={{color:"#3a5a6a"}}>—</em> : value}
+          {value !== null && value !== undefined && value !== "" && unit &&
+            <span style={{fontSize:9,color:"#5a8aaa",marginLeft:3,fontWeight:"normal"}}>{unit}</span>}
+        </span>
+      </div>
+    );
+    const updated = new Date(w.timestamp).toLocaleTimeString("et-EE", {hour:"2-digit", minute:"2-digit"});
+    return (
+      <div style={weatherBoxStyle}>
+        <div style={{padding:"10px 14px 8px",borderBottom:"1px solid rgba(126,171,200,0.1)"}}>
+          <div style={{fontSize:8,letterSpacing:3,color:"#7eabc8",textTransform:"uppercase"}}>⚓ Loksa Station · ~10 km E</div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:2}}>
+            <div style={{fontSize:14,fontWeight:"bold",color:"#e8f4f8",letterSpacing:2}}>WEATHER</div>
+            <div style={{fontSize:9,color:"#5a8aaa"}}>● {updated}</div>
+          </div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"12px 8px 4px"}}>
+          <WindRose dir={dir} speed={speed} gust={gust}/>
+        </div>
+        <div style={{padding:"0 14px 6px",textAlign:"center"}}>
+          <div style={{fontSize:11,color:"#f0c040",letterSpacing:1.5,fontWeight:"bold"}}>
+            {typeof dir === "number" ? `${compass(dir)} · ${Math.round(dir)}°` : "—"}
+          </div>
+          {bf !== null && (
+            <div style={{fontSize:9,color:"#7eabc8",marginTop:1}}>Beaufort {bf}</div>
+          )}
+        </div>
+        <div style={{padding:"6px 14px 12px"}}>
+          {stat("Air temp", w.airtemperature, "°C", "#f0c040")}
+          {stat("Sea temp", w.watertemperature, "°C", "#6ab0e8")}
+          {stat("Sea level", w.waterlevel, "cm", "#6ab0e8")}
+          {w.waterlevel_eh2000 !== null && stat("EH2000", w.waterlevel_eh2000, "cm")}
+          {stat("Pressure", w.airpressure, "hPa")}
+          {stat("Humidity", w.relativehumidity, "%")}
+          {w.phenomenon && (
+            <div style={{marginTop:6,fontSize:10,color:"#c8e0f0",fontStyle:"italic",textAlign:"center"}}>
+              {w.phenomenon}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -487,6 +656,7 @@ export default function HaraMarina() {
                 background:"radial-gradient(ellipse at 20% 50%,#0d3050 0%,#071520 100%)",
                 padding:"28px 0 28px 20px"}}>
                 <WaterLines/>
+                <WeatherPanel/>
                 <div style={{position:"absolute",right:0,top:0,bottom:0,width:20,
                   background:"linear-gradient(to left,#3a2c18,#2a2010,transparent)",
                   borderLeft:"2px solid #6a5028",zIndex:3}}/>
