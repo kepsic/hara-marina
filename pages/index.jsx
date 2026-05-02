@@ -60,12 +60,15 @@ function BoatShape({ color, isSelected, isSwapSrc, isOver, small }) {
   const sw = stroke === "rgba(255,255,255,0.3)" ? 1 : 2.5;
   return (
     <svg width={w} height={h} viewBox="0 0 80 32" fill="none">
-      <path d="M6 16 C6 16 18 4 50 4 L74 10 L76 16 L74 22 L50 28 C18 28 6 16 6 16Z"
-        fill={color} stroke={stroke} strokeWidth={sw}
-        style={{ filter: isSwapSrc?"drop-shadow(0 0 7px #00e5ff99)":isOver?"drop-shadow(0 0 7px #f0c04088)":"drop-shadow(0 1px 3px rgba(0,0,0,0.5))" }}/>
-      <path d="M12 16 L70 16" stroke="rgba(255,255,255,0.15)" strokeWidth="1" strokeDasharray="4,3"/>
-      <line x1="38" y1="7" x2="38" y2="25" stroke="rgba(255,255,255,0.55)" strokeWidth="1.5"/>
-      <ellipse cx="58" cy="16" rx="9" ry="5.5" fill="rgba(0,0,0,0.28)"/>
+      {/* Map convention: bow points South (left on screen), stern North (right). */}
+      <g transform="translate(80,0) scale(-1,1)">
+        <path d="M6 16 C6 16 18 4 50 4 L74 10 L76 16 L74 22 L50 28 C18 28 6 16 6 16Z"
+          fill={color} stroke={stroke} strokeWidth={sw}
+          style={{ filter: isSwapSrc?"drop-shadow(0 0 7px #00e5ff99)":isOver?"drop-shadow(0 0 7px #f0c04088)":"drop-shadow(0 1px 3px rgba(0,0,0,0.5))" }}/>
+        <path d="M12 16 L70 16" stroke="rgba(255,255,255,0.15)" strokeWidth="1" strokeDasharray="4,3"/>
+        <line x1="38" y1="7" x2="38" y2="25" stroke="rgba(255,255,255,0.55)" strokeWidth="1.5"/>
+        <ellipse cx="58" cy="16" rx="9" ry="5.5" fill="rgba(0,0,0,0.28)"/>
+      </g>
     </svg>
   );
 }
@@ -465,15 +468,15 @@ export default function HaraMarina() {
   }
   function WindRose({ dir, speed, gust }) {
     // dir = degrees the wind is coming FROM (meteorological convention)
-    // Marina map orientation: boat bows point right = North.
-    // So rotate the rose 90° CW (N→right, E→down, S→left, W→up).
+    // Marina map orientation: boat bows point South (left on screen),
+    // sterns point North (right). So the rose's N must sit on the LEFT.
     const size = 150, c = size / 2, r = c - 12;
     const cardinals = [["N",0],["E",90],["S",180],["W",270]];
     const ticks = Array.from({ length: 16 }, (_, i) => i * 22.5);
     const hasDir = typeof dir === "number" && !isNaN(dir);
     const arrowFrom = hasDir ? dir : 0;
-    // No -90 offset → 0° points right (= North on this map).
-    const rad = (a) => a * Math.PI / 180;
+    // 0° (N) → points left  (a + 180 → 180° offset = west axis on screen)
+    const rad = (a) => (a + 180) * Math.PI / 180;
     const tipX = c - Math.cos(rad(arrowFrom)) * (r - 8);
     const tipY = c - Math.sin(rad(arrowFrom)) * (r - 8);
     const tailX = c + Math.cos(rad(arrowFrom)) * (r - 18);
