@@ -867,7 +867,10 @@ export default function HaraMarina() {
 
           {/* Tabs */}
           <div style={{display:"flex",gap:4,background:"rgba(0,0,0,0.3)",borderRadius:6,padding:3}}>
-            {[{id:"marina",label:"⚓ Marina"},{id:"crane",label:"🏗 Crane"}].map(tab=>(
+            {[
+              {id:"marina",label:"⚓ Marina"},
+              ...(authed ? [{id:"crane",label:"🏗 Crane"}] : []),
+            ].map(tab=>(
               <button key={tab.id} onClick={()=>setView(tab.id)} style={{
                 padding:"6px 14px",borderRadius:4,cursor:"pointer",fontSize:10,letterSpacing:1,
                 fontFamily:"inherit",fontWeight:view===tab.id?"bold":"normal",
@@ -1068,7 +1071,7 @@ export default function HaraMarina() {
             </>
           )}
 
-          {view==="crane"&&<CraneView/>}
+          {view==="crane"&&authed&&<CraneView/>}
         </div>
       </div>
     </>
