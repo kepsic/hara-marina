@@ -161,6 +161,16 @@ export default function HaraMarina() {
 
   const boatSlug = (name) => String(name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
+  function updateBoats(fn) {
+    setBoats(prev => { const n = fn(prev); storageSet("hara-boats", n); return n; });
+  }
+  function updateQueue(fn) {
+    setQueue(prev => { const n = fn(prev); storageSet("hara-queue", n); return n; });
+  }
+
+  const getBoat = id => boats.find(b => b.id === id) || null;
+  const selectedBoat = getBoat(selectedId);
+
   // Telemetry fetch when telemetry tab is open
   useEffect(() => {
     if (!selectedId || panelTab !== "telemetry" || !selectedBoat) return;
@@ -182,16 +192,6 @@ export default function HaraMarina() {
     return () => { cancelled = true; clearInterval(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, panelTab, selectedBoat?.name]);
-
-  function updateBoats(fn) {
-    setBoats(prev => { const n = fn(prev); storageSet("hara-boats", n); return n; });
-  }
-  function updateQueue(fn) {
-    setQueue(prev => { const n = fn(prev); storageSet("hara-queue", n); return n; });
-  }
-
-  const getBoat = id => boats.find(b => b.id === id) || null;
-  const selectedBoat = getBoat(selectedId);
 
   // ── Panel ──────────────────────────────────────────────────────────────────────
   function openPanel(id) {
