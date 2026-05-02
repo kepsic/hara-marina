@@ -18,7 +18,7 @@ import (
 )
 
 func main() {
-	cfgPath := flag.String("config", "config.yaml", "path to config file")
+	cfgPath := flag.String("config", "", "path to config file (optional; env vars take precedence)")
 	dryRun := flag.Bool("dry-run", false, "print payload to stdout instead of publishing")
 	flag.Parse()
 

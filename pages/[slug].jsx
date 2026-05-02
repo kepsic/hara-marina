@@ -36,7 +36,7 @@ function Stat({ label, value, unit, color = "#e8f4f8", big }) {
       background:"linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
       border:"1px solid rgba(126,171,200,0.18)",
       borderRadius:8, padding:"12px 14px", flex:"1 1 140px", minWidth:140,
-    }}>, viewerEmail
+    }}>
       <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:4}}>{label}</div>
       <div style={{fontSize:big?26:18,fontWeight:"bold",color,fontFamily:"Georgia, serif"}}>
         {isBlank ? <em style={{color:"#3a5a6a"}}>—</em> : value}
