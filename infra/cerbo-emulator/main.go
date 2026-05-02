@@ -36,6 +36,7 @@ type config struct {
 	username        string
 	password        string
 	vrmID           string
+	marinaSlug      string // also publish flat doc on marina/<slug>/telemetry
 	publishPeriod   time.Duration
 	keepaliveGrace  time.Duration
 	publishWithout  bool // emit even if no keepalive seen (for local debug)
@@ -72,6 +73,7 @@ func loadConfig() config {
 		broker:         envOr("MQTT_BROKER", ""),
 		username:       envOr("MQTT_USERNAME", ""),
 		password:       envOr("MQTT_PASSWORD", ""),
+		marinaSlug:     envOr("MARINA_SLUG", "moi"),
 		vrmID:          envOr("VRM_ID", "c0deba5eb0a7"),
 		publishPeriod:  envDuration("PUBLISH_PERIOD", 5*time.Second),
 		keepaliveGrace: envDuration("KEEPALIVE_GRACE", 60*time.Second),
@@ -180,6 +182,30 @@ func main() {
 			emit("system/0/Position/Latitude", round(state.lat, 6))
 			emit("system/0/Position/Longitude", round(state.lon, 6))
 			emit("temperature/0/Temperature", round(state.cabinTempC, 1))
+
+			// Also publish a flat ingest-shaped doc so the marina EMQX rule
+			// can forward straight to /api/ingest/telemetry without a bridge.
+			if cfg.marinaSlug != "" {
+				doc := map[string]any{
+					"slug": cfg.marinaSlug,
+					"ts":   now.UnixMilli(),
+					"battery": map[string]any{
+						"voltage": round(state.batteryV, 2),
+						"percent": int(math.Round(state.batterySoc)),
+					},
+					"shore_power": state.shorePower,
+					"cabin": map[string]any{
+						"temperature_c": round(state.cabinTempC, 1),
+						"humidity_pct":  int(math.Round(state.cabinHumidity)),
+					},
+					"position": map[string]any{
+						"lat": round(state.lat, 6),
+						"lon": round(state.lon, 6),
+					},
+				}
+				body, _ := json.Marshal(doc)
+				client.Publish("marina/"+cfg.marinaSlug+"/telemetry", 0, false, body)
+			}
 			emit("temperature/0/Humidity", int(math.Round(state.cabinHumidity)))
 		}
 	}
