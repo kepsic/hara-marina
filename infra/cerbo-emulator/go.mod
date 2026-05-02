@@ -1,8 +1,6 @@
 module github.com/kepsic/hara-marina/cerbo-emulator
 
-go 1.24.0
-
-toolchain go1.24.4
+go 1.22
 
 require github.com/eclipse/paho.mqtt.golang v1.5.1
 
