@@ -81,6 +81,23 @@ function WaterLines() {
   );
 }
 
+// ── Field (hoisted so its component identity is stable; otherwise inputs lose focus on every keystroke) ─
+function Field({label, fieldKey, placeholder, editMode, draft, setDraft}) {
+  return (
+    <div style={{marginBottom:10}}>
+      <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:3}}>{label}</div>
+      {editMode
+        ? <input value={draft[fieldKey]||""} onChange={e=>setDraft(d=>({...d,[fieldKey]:e.target.value}))} placeholder={placeholder}
+            style={{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(126,171,200,0.25)",
+              color:"#e8f4f8",padding:"5px 8px",borderRadius:4,fontSize:12,boxSizing:"border-box",outline:"none",fontFamily:"inherit"}}/>
+        : <div style={{fontSize:13,color:draft?.[fieldKey]?"#e8f4f8":"#3a5a6a",minHeight:20}}>
+            {draft?.[fieldKey]||<em style={{opacity:0.35}}>—</em>}
+          </div>
+      }
+    </div>
+  );
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function HaraMarina() {
   const [boats,      setBoats]      = useState(INITIAL_BOATS);
@@ -262,23 +279,6 @@ export default function HaraMarina() {
     zIndex:5,
     fontFamily:"'Georgia','Times New Roman',serif",
   };
-
-  // ── Field ──────────────────────────────────────────────────────────────────────
-  function Field({label,fieldKey,placeholder}) {
-    return (
-      <div style={{marginBottom:10}}>
-        <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:3}}>{label}</div>
-        {editMode
-          ? <input value={draft[fieldKey]||""} onChange={e=>setDraft(d=>({...d,[fieldKey]:e.target.value}))} placeholder={placeholder}
-              style={{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(126,171,200,0.25)",
-                color:"#e8f4f8",padding:"5px 8px",borderRadius:4,fontSize:12,boxSizing:"border-box",outline:"none",fontFamily:"inherit"}}/>
-          : <div style={{fontSize:13,color:draft?.[fieldKey]?"#e8f4f8":"#3a5a6a",minHeight:20}}>
-              {draft?.[fieldKey]||<em style={{opacity:0.35}}>—</em>}
-            </div>
-        }
-      </div>
-    );
-  }
 
   // ── Boat row ───────────────────────────────────────────────────────────────────
   function BoatRow({boatId}) {
@@ -888,14 +888,14 @@ export default function HaraMarina() {
                     </div>
                     <div style={{flex:1,overflowY:"auto",padding:"12px 16px"}}>
                       {panelTab === "details" && <>
-                      <Field label="Owner / Omanik" fieldKey="owner" placeholder="Firstname Lastname"/>
-                      <Field label="Vessel Model" fieldKey="model" placeholder="e.g. Beneteau First 35"/>
+                      <Field label="Owner / Omanik" fieldKey="owner" placeholder="Firstname Lastname" editMode={editMode} draft={draft} setDraft={setDraft}/>
+                      <Field label="Vessel Model" fieldKey="model" placeholder="e.g. Beneteau First 35" editMode={editMode} draft={draft} setDraft={setDraft}/>
                       <div style={{display:"flex",gap:8}}>
-                        <div style={{flex:1}}><Field label="Length m" fieldKey="length" placeholder="10.5"/></div>
-                        <div style={{flex:1}}><Field label="Beam m" fieldKey="beam" placeholder="3.4"/></div>
-                        <div style={{flex:1}}><Field label="Draft m" fieldKey="draft" placeholder="1.8"/></div>
+                        <div style={{flex:1}}><Field label="Length m" fieldKey="length" placeholder="10.5" editMode={editMode} draft={draft} setDraft={setDraft}/></div>
+                        <div style={{flex:1}}><Field label="Beam m" fieldKey="beam" placeholder="3.4" editMode={editMode} draft={draft} setDraft={setDraft}/></div>
+                        <div style={{flex:1}}><Field label="Draft m" fieldKey="draft" placeholder="1.8" editMode={editMode} draft={draft} setDraft={setDraft}/></div>
                       </div>
-                      <Field label="Engine" fieldKey="engine" placeholder="Volvo D2-40"/>
+                      <Field label="Engine" fieldKey="engine" placeholder="Volvo D2-40" editMode={editMode} draft={draft} setDraft={setDraft}/>
                       <div style={{marginBottom:10}}>
                         <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:6}}>Equipment</div>
                         <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
@@ -916,7 +916,7 @@ export default function HaraMarina() {
                           }
                         </div>
                       </div>
-                      <Field label="Notes / Märkused" fieldKey="notes" placeholder="Free text..."/>
+                      <Field label="Notes / Märkused" fieldKey="notes" placeholder="Free text..." editMode={editMode} draft={draft} setDraft={setDraft}/>
                       {!queuedBoatIds.has(selectedId)?(
                         <div style={{marginTop:4,paddingTop:10,borderTop:"1px solid rgba(126,171,200,0.08)"}}>
                           <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:6}}>Add to Crane Queue</div>
