@@ -2,4 +2,12 @@
 html, body, #__next { height: 100%; }
 body { background: #091820; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+/* Boat rocking driven by wind. Per-boat amplitude/phase set inline as
+   --roll (deg) and --rockDur (s); duration ~2.2-3.2s for natural variation. */
+@keyframes boatRoll {
+  0%   { transform: rotate(calc(var(--roll, 0deg) *  1)); }
+  50%  { transform: rotate(calc(var(--roll, 0deg) * -1)); }
+  100% { transform: rotate(calc(var(--roll, 0deg) *  1)); }
+}
+.boat-rock { animation: boatRoll var(--rockDur, 2.6s) ease-in-out infinite; transform-origin: 50% 50%; will-change: transform; }
 [draggable]:active { cursor: grabbing; }

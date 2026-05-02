@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import Head from "next/head";
 import Link from "next/link";
+import WindCanvas from "../components/WindCanvas";
 
 const DOCK_SECTIONS = [
   { id: "A", boats: [1, 2, 3] },
@@ -308,6 +309,20 @@ export default function HaraMarina() {
     const isTgt=swapSrcId!==null&&swapSrcId!==boatId;
     const isDrag=dragId===boatId, isOver=dragOver===boatId;
     const inQ=queuedBoatIds.has(boatId);
+    // Wind-driven rocking. Boats lie horizontal on screen (long axis E-W),
+    // so a wind from N or S hits the beam and produces max roll; a wind
+    // from E or W is along the keel and rocks nothing. Beam component on
+    // screen = sin(downwind bearing) using the same N=left mapping as the
+    // rose. Per-boat duration jitter avoids unison.
+    const wd = weather?.winddirection;
+    const ws = weather?.windspeed;
+    let rollDeg = 0, rockDur = 2.6;
+    if (typeof wd === "number" && typeof ws === "number" && ws > 0) {
+      const toDeg = (wd + 180) % 360;
+      const beam = Math.sin(toDeg * Math.PI / 180); // -1..1
+      rollDeg = Math.max(-5, Math.min(5, ws * 0.55 * beam));
+      rockDur = 2.2 + ((boatId * 37) % 110) / 100; // deterministic 2.2-3.3s
+    }
     return (
       <div draggable
         onDragStart={e=>onDragStart(e,boatId)} onDragOver={e=>onDragOver(e,boatId)}
@@ -345,7 +360,9 @@ export default function HaraMarina() {
             <line x1="0" y1="12" x2="100" y2="18" stroke="#c8a050" strokeWidth="1" strokeDasharray="4,3" vectorEffect="non-scaling-stroke"/>
           </svg>
         </div>
-        <BoatShape color={boat.color} isSelected={isSel} isSwapSrc={isSrc} isOver={isOver||isTgt}/>
+        <div className="boat-rock" style={{"--roll": `${rollDeg.toFixed(2)}deg`, "--rockDur": `${rockDur.toFixed(2)}s`}}>
+          <BoatShape color={boat.color} isSelected={isSel} isSwapSrc={isSrc} isOver={isOver||isTgt}/>
+        </div>
       </div>
     );
   }
@@ -896,6 +913,7 @@ export default function HaraMarina() {
                 background:"radial-gradient(ellipse at 20% 50%,#0d3050 0%,#071520 100%)",
                 padding:"28px 0 28px 20px"}}>
                 <WaterLines/>
+                <WindCanvas dir={weather?.winddirection} speed={weather?.windspeed} gust={weather?.windspeedmax}/>
                 <WeatherPanel/>
                 <WeatherReopen/>
                 <div style={{position:"absolute",right:0,top:0,bottom:0,width:20,
