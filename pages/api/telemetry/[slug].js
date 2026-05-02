@@ -1,6 +1,7 @@
 import { makeTelemetry } from "../../../lib/telemetry";
 import { verifySession, SESSION_COOKIE_NAME } from "../../../lib/auth";
 import { canViewBoat } from "../../../lib/owners";
+import { getTelemetry } from "../../../lib/telemetryStore";
 
 export default async function handler(req, res) {
   const { slug } = req.query;
@@ -14,7 +15,28 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: "auth required" });
   }
 
-  // Pull current boats list from KV (falls back to constants)
+  const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+  // 1. Live telemetry from Upstash (pushed by EMQX ingest webhook).
+  try {
+    const live = await getTelemetry(norm(slug));
+    if (live) {
+      const last_seen_ago = Math.max(0, Math.floor((Date.now() - (live.ts || Date.now())) / 1000));
+      res.setHeader("Cache-Control", "private, no-store");
+      return res.status(200).json({
+        boat_name: slug,
+        ...live,
+        timestamp: live.ts,
+        last_seen_ago,
+        source: "live",
+      });
+    }
+  } catch (e) {
+    console.error("telemetry read failed:", e);
+  }
+
+  // 2. Fallback: synthesised demo telemetry (so the UI is never empty before
+  //    the boat's MQTT client is online).
   let boats = null;
   try {
     const r = await fetch(
@@ -29,11 +51,9 @@ export default async function handler(req, res) {
     boats = INITIAL_BOATS;
   }
 
-  const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   const boat = boats.find((b) => norm(b.name) === norm(slug));
   if (!boat) return res.status(404).json({ error: "boat not found" });
 
-  // Telemetry is per-user data — do not cache on shared CDNs.
   res.setHeader("Cache-Control", "private, no-store");
-  return res.status(200).json(makeTelemetry(boat));
+  return res.status(200).json({ ...makeTelemetry(boat), source: "demo" });
 }
