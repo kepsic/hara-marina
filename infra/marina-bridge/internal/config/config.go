@@ -54,8 +54,8 @@ func Load(path string) (*Config, error) {
 	if c.PublishInterval == 0 {
 		c.PublishInterval = 30 * time.Second
 	}
-	if c.Sources.Cerbo.Enabled && (c.Sources.Cerbo.Broker == "" || c.Sources.Cerbo.VrmID == "") {
-		return nil, fmt.Errorf("cerbo source requires broker and vrm_id")
+	if c.Sources.Cerbo.Enabled && c.Sources.Cerbo.Broker == "" {
+		return nil, fmt.Errorf("cerbo source requires broker (vrm_id may be empty or \"auto\")")
 	}
 	if c.Sources.Ydwg.Enabled && c.Sources.Ydwg.Address == "" {
 		return nil, fmt.Errorf("ydwg source requires address")

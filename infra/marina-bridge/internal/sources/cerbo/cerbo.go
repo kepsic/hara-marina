@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -51,8 +52,26 @@ func toFloat(v any) (float64, bool) {
 }
 
 // Run blocks until ctx is cancelled. On disconnect Paho auto-reconnects.
+//
+// If cfg.VrmID is "" or "auto", the bridge subscribes to N/+/# and pins
+// itself to the first VRM ID it sees. This removes the need for the boat
+// owner to look up their portal ID.
 func Run(ctx context.Context, cfg config.CerboConfig, snap *telemetry.Snapshot) error {
-	prefix := fmt.Sprintf("N/%s/", cfg.VrmID)
+	auto := cfg.VrmID == "" || strings.EqualFold(cfg.VrmID, "auto")
+
+	var (
+		mu       sync.RWMutex
+		resolved string // set once auto-discovery succeeds
+		once     sync.Once
+	)
+	getPrefix := func() (string, bool) {
+		mu.RLock()
+		defer mu.RUnlock()
+		if resolved == "" {
+			return "", false
+		}
+		return "N/" + resolved + "/", true
+	}
 
 	opts := mqtt.NewClientOptions().
 		AddBroker(cfg.Broker).
@@ -62,15 +81,37 @@ func Run(ctx context.Context, cfg config.CerboConfig, snap *telemetry.Snapshot) 
 		SetConnectRetryInterval(5 * time.Second).
 		SetCleanSession(true).
 		SetKeepAlive(30 * time.Second).
-		SetOnConnectHandler(func(c mqtt.Client) {
-			log.Printf("[cerbo] connected to %s", cfg.Broker)
-			c.Subscribe(prefix+"#", 0, func(_ mqtt.Client, m mqtt.Message) {
-				handle(m.Topic(), m.Payload(), prefix, snap)
-			})
-		}).
 		SetConnectionLostHandler(func(_ mqtt.Client, err error) {
 			log.Printf("[cerbo] connection lost: %v", err)
 		})
+
+	opts.SetOnConnectHandler(func(c mqtt.Client) {
+		log.Printf("[cerbo] connected to %s", cfg.Broker)
+		filter := "N/+/#"
+		if !auto {
+			mu.Lock()
+			resolved = cfg.VrmID
+			mu.Unlock()
+			filter = "N/" + cfg.VrmID + "/#"
+		}
+		c.Subscribe(filter, 0, func(client mqtt.Client, m mqtt.Message) {
+			if auto {
+				parts := strings.SplitN(m.Topic(), "/", 3)
+				if len(parts) >= 3 && parts[1] != "" {
+					once.Do(func() {
+						mu.Lock()
+						resolved = parts[1]
+						mu.Unlock()
+						log.Printf("[cerbo] auto-detected VRM portal id: %s", parts[1])
+						go keepalive(ctx, client, parts[1])
+					})
+				}
+			}
+			if p, ok := getPrefix(); ok {
+				handle(m.Topic(), m.Payload(), p, snap)
+			}
+		})
+	})
 
 	client := mqtt.NewClient(opts)
 	if t := client.Connect(); t.WaitTimeout(20*time.Second) && t.Error() != nil {
@@ -78,8 +119,28 @@ func Run(ctx context.Context, cfg config.CerboConfig, snap *telemetry.Snapshot) 
 	}
 	defer client.Disconnect(500)
 
-	// Keepalive: Venus OS only streams when it sees a request on R/<id>/...
-	go keepalive(ctx, client, cfg.VrmID)
+	if !auto {
+		go keepalive(ctx, client, cfg.VrmID)
+	} else {
+		// Many Cerbos won't publish at all without a keepalive. Send a
+		// broadcast wildcard request so we get one message back, learn the
+		// VRM id, then the per-id keepalive takes over.
+		go func() {
+			t := time.NewTicker(5 * time.Second)
+			defer t.Stop()
+			for {
+				if _, ok := getPrefix(); ok {
+					return
+				}
+				client.Publish("R/+/keepalive", 0, false, "")
+				select {
+				case <-ctx.Done():
+					return
+				case <-t.C:
+				}
+			}
+		}()
+	}
 
 	<-ctx.Done()
 	return nil

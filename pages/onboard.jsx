@@ -62,9 +62,11 @@ export default function Onboard() {
   const [step, setStep] = useState(1);
   const [slug, setSlug] = useState("");
   const [source, setSource] = useState("cerbo");
-  const [creds, setCreds] = useState(null);
+  const [setup, setSetup] = useState(null);   // {command, setup_url, expires_in_min, slug, source}
+  const [creds, setCreds] = useState(null);   // legacy raw-creds path (advanced)
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [advanced, setAdvanced] = useState(false);
 
   useEffect(() => {
     fetch("/api/onboarding/me").then(async (r) => {
@@ -75,7 +77,22 @@ export default function Onboard() {
     });
   }, []);
 
-  async function provision() {
+  async function mintSetup() {
+    setBusy(true); setErr("");
+    try {
+      const r = await fetch("/api/onboarding/setup-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug, source }),
+      });
+      const j = await r.json();
+      if (!r.ok) { setErr(j.error || "could not generate install command"); return; }
+      setSetup(j); setCreds(null); setStep(4);
+    } catch { setErr("network error"); }
+    finally { setBusy(false); }
+  }
+
+  async function provisionRaw() {
     setBusy(true); setErr("");
     try {
       const r = await fetch("/api/onboarding/provision", {
@@ -85,8 +102,7 @@ export default function Onboard() {
       });
       const j = await r.json();
       if (!r.ok) { setErr(j.error || "provisioning failed"); return; }
-      setCreds(j);
-      setStep(4);
+      setCreds(j); setSetup(null); setStep(4);
     } catch { setErr("network error"); }
     finally { setBusy(false); }
   }
@@ -184,25 +200,30 @@ export default function Onboard() {
 
             {step === 3 && (
               <>
-                <h2 style={{ marginTop: 0, fontSize: 18, letterSpacing: 2 }}>3 · Generate credentials</h2>
+                <h2 style={{ marginTop: 0, fontSize: 18, letterSpacing: 2 }}>3 · Generate install command</h2>
                 <p style={{ fontSize: 13, color: "#9ec8e0", lineHeight: 1.6 }}>
-                  We'll create an MQTT user <code style={{ color: "#f0c040" }}>boat-{slug}</code> on the marina broker and lock its
-                  permissions to <code style={{ color: "#f0c040" }}>marina/{slug}/#</code>. The password is shown once — save it
-                  immediately.
+                  We'll mint a one-time, 30-minute install link for <b>{slug}</b>. Paste it on your boat's Raspberry Pi and the
+                  bridge installs itself — no copy-pasting passwords or YAML.
                 </p>
                 {err && <div style={{ marginTop: 12, color: "#e08080", fontSize: 12 }}>{err}</div>}
                 <div style={{ marginTop: 24, display: "flex", justifyContent: "space-between" }}>
                   <button onClick={()=>setStep(2)} style={btnGhost}>← Back</button>
-                  <button onClick={provision} disabled={busy} style={{ ...btn, opacity: busy ? 0.5 : 1 }}>
-                    {busy ? "Provisioning…" : "Generate credentials"}
+                  <button onClick={mintSetup} disabled={busy} style={{ ...btn, opacity: busy ? 0.5 : 1 }}>
+                    {busy ? "Generating…" : "Generate install command"}
+                  </button>
+                </div>
+                <div style={{ marginTop: 24, fontSize: 11, color: "#5a8aaa", textAlign: "center" }}>
+                  <button onClick={()=>{ setAdvanced(true); provisionRaw(); }} disabled={busy}
+                    style={{ background: "none", border: "none", color: "#7eabc8", cursor: "pointer",
+                      textDecoration: "underline", fontSize: 11, fontFamily: "inherit" }}>
+                    Advanced: just give me the raw MQTT credentials
                   </button>
                 </div>
               </>
             )}
 
-            {step === 4 && creds && (
-              <ResultStep creds={creds} source={source} />
-            )}
+            {step === 4 && setup  && <SetupResult  setup={setup}  source={source} />}
+            {step === 4 && creds  && <ResultStep   creds={creds}  source={source} />}
           </div>
 
           <div style={{ marginTop: 24, fontSize: 11, color: "#5a8aaa", textAlign: "center" }}>
@@ -210,6 +231,66 @@ export default function Onboard() {
           </div>
         </div>
       </div>
+    </>
+  );
+}
+
+function SetupResult({ setup, source }) {
+  const [copied, setCopied] = useState(false);
+  const [left, setLeft] = useState((setup.expires_in_min || 30) * 60);
+  useEffect(() => {
+    const t = setInterval(() => setLeft((s) => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(t);
+  }, []);
+  function copy() {
+    navigator.clipboard.writeText(setup.command).then(() => {
+      setCopied(true); setTimeout(() => setCopied(false), 1500);
+    });
+  }
+  const mm = String(Math.floor(left / 60)).padStart(2, "0");
+  const ss = String(left % 60).padStart(2, "0");
+  return (
+    <>
+      <h2 style={{ marginTop: 0, fontSize: 18, letterSpacing: 2 }}>4 · One command, then you're done</h2>
+      <p style={{ fontSize: 13, color: "#9ec8e0", lineHeight: 1.6 }}>
+        SSH into your boat's Raspberry Pi (or whatever Linux box runs alongside your
+        {source === "cerbo" ? " Cerbo GX" : source === "ydwg" ? " Yacht Devices router" : " telemetry hardware"})
+        and paste this. The installer downloads the bridge, fetches your config, and starts a systemd service.
+      </p>
+
+      <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 12, fontSize: 11, color: "#7eabc8" }}>
+        <span style={{ letterSpacing: 2, textTransform: "uppercase" }}>Boat</span>
+        <span style={{ color: "#f0c040", fontWeight: "bold" }}>{setup.slug}</span>
+        <span style={{ marginLeft: "auto", fontFamily: "ui-monospace,Menlo,monospace" }}>
+          link expires in {mm}:{ss}
+        </span>
+      </div>
+
+      <pre style={{ ...code, marginTop: 8 }}>{setup.command}</pre>
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <button onClick={copy} style={btn}>{copied ? "✓ Copied" : "Copy command"}</button>
+        <a href={setup.setup_url} target="_blank" rel="noreferrer" style={{ ...btnGhost, textDecoration: "none", display: "inline-block" }}>
+          Preview config
+        </a>
+      </div>
+
+      <h3 style={{ marginTop: 28, fontSize: 14, letterSpacing: 2 }}>What it does</h3>
+      <ol style={{ fontSize: 12, color: "#9ec8e0", lineHeight: 1.7, paddingLeft: 18 }}>
+        <li>Detects CPU (arm64 / armv7 / amd64) and downloads the matching <code>marina-bridge</code> release.</li>
+        <li>Securely fetches your boat config (broker URL, MQTT user, fresh password).</li>
+        <li>Creates a <code>marina</code> system user and installs <code>/etc/systemd/system/marina-bridge.service</code>.</li>
+        <li>Starts the service and tails the first 8 seconds of logs so you can see it connect.</li>
+      </ol>
+
+      <p style={{ fontSize: 12, color: "#9ec8e0", marginTop: 16 }}>
+        After it finishes, refresh <Link href={`/${setup.slug}`} style={{ color: "#f0c040" }}>your boat page</Link>.
+        First telemetry usually arrives within 30 seconds. If something goes wrong, check
+        <code style={{ color: "#f0c040" }}> sudo journalctl -u marina-bridge -f</code>.
+      </p>
+
+      <p style={{ fontSize: 11, color: "#5a8aaa", marginTop: 16 }}>
+        New to all this? Read the <Link href="/quickstart" style={{ color: "#7eabc8" }}>quickstart guide</Link>.
+      </p>
     </>
   );
 }
