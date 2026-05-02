@@ -467,20 +467,24 @@ export default function HaraMarina() {
     return 12;
   }
   function WindRose({ dir, speed, gust }) {
-    // dir = degrees the wind is coming FROM (meteorological convention)
-    // Marina map orientation: boat bows point South (left on screen),
-    // sterns point North (right). So the rose's N must sit on the LEFT.
+    // dir = degrees the wind is coming FROM (meteorological convention).
+    // We draw a STANDARD compass (N=top, E=right, S=bottom, W=left) to match
+    // every other weather app (Windy, Ilmateenistus, etc.) and make the
+    // reading unambiguous regardless of how the marina map is oriented.
+    // The arrow points DOWNWIND — the direction the wind is blowing toward —
+    // also matching Windy. So a SW wind (223°) → arrow tip in the NE quadrant.
     const size = 150, c = size / 2, r = c - 12;
     const cardinals = [["N",0],["E",90],["S",180],["W",270]];
     const ticks = Array.from({ length: 16 }, (_, i) => i * 22.5);
     const hasDir = typeof dir === "number" && !isNaN(dir);
-    const arrowFrom = hasDir ? dir : 0;
-    // 0° (N) → points left  (a + 180 → 180° offset = west axis on screen)
-    const rad = (a) => (a + 180) * Math.PI / 180;
-    const tipX = c - Math.cos(rad(arrowFrom)) * (r - 8);
-    const tipY = c - Math.sin(rad(arrowFrom)) * (r - 8);
-    const tailX = c + Math.cos(rad(arrowFrom)) * (r - 18);
-    const tailY = c + Math.sin(rad(arrowFrom)) * (r - 18);
+    // 0° at top, clockwise. screen-x = sin(deg), screen-y = -cos(deg).
+    const sx = (deg) => Math.sin(deg * Math.PI / 180);
+    const sy = (deg) => -Math.cos(deg * Math.PI / 180);
+    const downwind = hasDir ? (dir + 180) % 360 : 0;
+    const tipX  = c + sx(downwind) * (r - 8);
+    const tipY  = c + sy(downwind) * (r - 8);
+    const tailX = c - sx(downwind) * (r - 18);
+    const tailY = c - sy(downwind) * (r - 18);
     return (
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{display:"block"}}>
         {/* outer ring */}
@@ -490,10 +494,10 @@ export default function HaraMarina() {
         {ticks.map((a, i) => {
           const major = i % 4 === 0;
           const len = major ? 7 : 3;
-          const x1 = c + Math.cos(rad(a)) * r;
-          const y1 = c + Math.sin(rad(a)) * r;
-          const x2 = c + Math.cos(rad(a)) * (r - len);
-          const y2 = c + Math.sin(rad(a)) * (r - len);
+          const x1 = c + sx(a) * r;
+          const y1 = c + sy(a) * r;
+          const x2 = c + sx(a) * (r - len);
+          const y2 = c + sy(a) * (r - len);
           return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2}
             stroke={major ? "#c8a050" : "rgba(126,171,200,0.4)"} strokeWidth={major ? 1.5 : 1}/>;
         })}
@@ -515,8 +519,8 @@ export default function HaraMarina() {
         )}
         {/* cardinal labels */}
         {cardinals.map(([lbl, a]) => {
-          const x = c + Math.cos(rad(a)) * (r + 7);
-          const y = c + Math.sin(rad(a)) * (r + 7) + 3;
+          const x = c + sx(a) * (r + 7);
+          const y = c + sy(a) * (r + 7) + 3;
           return (
             <text key={lbl} x={x} y={y} textAnchor="middle"
               fontSize="10" fontWeight="bold" letterSpacing="1"
