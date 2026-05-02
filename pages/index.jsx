@@ -582,17 +582,26 @@ export default function HaraMarina() {
     const speed = w.windspeed;
     const gust = w.windspeedmax;
     const bf = typeof speed === "number" ? beaufort(speed) : null;
-    const stat = (label, value, unit, color = "#e8f4f8") => (
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",
-        padding:"4px 0",borderBottom:"1px solid rgba(126,171,200,0.06)"}}>
-        <span style={{fontSize:9,letterSpacing:1.5,color:"#7eabc8",textTransform:"uppercase"}}>{label}</span>
-        <span style={{fontSize:12,fontWeight:"bold",color}}>
-          {value === null || value === undefined || value === "" ? <em style={{color:"#3a5a6a"}}>—</em> : value}
-          {value !== null && value !== undefined && value !== "" && unit &&
-            <span style={{fontSize:9,color:"#5a8aaa",marginLeft:3,fontWeight:"normal"}}>{unit}</span>}
-        </span>
-      </div>
-    );
+    const stat = (label, value, unit, color = "#e8f4f8", source = null) => {
+      const has = value !== null && value !== undefined && value !== "";
+      const borrowed = has && source && source.distance_km > 0;
+      return (
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",
+          padding:"4px 0",borderBottom:"1px solid rgba(126,171,200,0.06)"}}>
+          <span style={{fontSize:9,letterSpacing:1.5,color:"#7eabc8",textTransform:"uppercase"}}>{label}</span>
+          <span style={{fontSize:12,fontWeight:"bold",color,textAlign:"right"}}>
+            {has ? value : <em style={{color:"#3a5a6a"}}>—</em>}
+            {has && unit &&
+              <span style={{fontSize:9,color:"#5a8aaa",marginLeft:3,fontWeight:"normal"}}>{unit}</span>}
+            {borrowed &&
+              <div style={{fontSize:8,color:"#5a8aaa",fontWeight:"normal",letterSpacing:0.5,marginTop:1}}>
+                {source.name} · {source.distance_km} km
+              </div>}
+          </span>
+        </div>
+      );
+    };
+    const src = (k) => (w.sources && w.sources[k]) || null;
     const updated = new Date(w.timestamp).toLocaleTimeString("et-EE", {hour:"2-digit", minute:"2-digit"});
     return (
       <div ref={weatherDragRef} style={weatherBoxStyle}>
@@ -621,8 +630,8 @@ export default function HaraMarina() {
           )}
         </div>
         <div style={{padding:"6px 14px 12px"}}>
-          {stat("Air temp", w.airtemperature, "°C", "#f0c040")}
-          {stat("Sea temp", w.watertemperature, "°C", "#6ab0e8")}
+          {stat("Air temp", w.airtemperature, "°C", "#f0c040", src("airtemperature"))}
+          {stat("Sea temp", w.watertemperature, "°C", "#6ab0e8", src("watertemperature"))}
           {/* Estonian stations report sea level relative to EH2000 datum;
               the legacy `waterlevel` (BK77) field is usually empty. */}
           {stat(
@@ -630,12 +639,20 @@ export default function HaraMarina() {
             w.waterlevel_eh2000 ?? w.waterlevel,
             "cm EH2000",
             "#6ab0e8",
+            src("waterlevel_eh2000") || src("waterlevel"),
           )}
-          {stat("Pressure", w.airpressure, "hPa")}
-          {stat("Humidity", w.relativehumidity, "%")}
+          {stat("Pressure", w.airpressure, "hPa", "#e8f4f8", src("airpressure"))}
+          {stat("Humidity", w.relativehumidity, "%", "#e8f4f8", src("relativehumidity"))}
+          {stat("Precip.", w.precipitations, "mm", "#6ab0e8", src("precipitations"))}
+          {stat("Visibility", w.visibility, "km", "#e8f4f8", src("visibility"))}
           {w.phenomenon && (
             <div style={{marginTop:6,fontSize:10,color:"#c8e0f0",fontStyle:"italic",textAlign:"center"}}>
               {w.phenomenon}
+              {src("phenomenon") && src("phenomenon").distance_km > 0 && (
+                <span style={{fontSize:8,color:"#5a8aaa",fontStyle:"normal",marginLeft:6}}>
+                  {src("phenomenon").name} · {src("phenomenon").distance_km} km
+                </span>
+              )}
             </div>
           )}
         </div>
