@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import Head from "next/head";
+import Link from "next/link";
 
 const DOCK_SECTIONS = [
   { id: "A", boats: [1, 2, 3] },
@@ -100,6 +101,8 @@ export default function HaraMarina() {
   const [weatherShown, setWeatherShown] = useState(true);
   const [weatherPos, setWeatherPos]   = useState({ x: null, y: null }); // null = use default top/right
   const weatherDragRef = useRef(null);
+  const [panelTab, setPanelTab] = useState("details"); // 'details' | 'telemetry'
+  const [telemetry, setTelemetry] = useState(null);
 
   // ── Load from KV on mount ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -139,6 +142,26 @@ export default function HaraMarina() {
     return () => { cancelled = true; clearInterval(t); };
   }, []);
 
+  const boatSlug = (name) => String(name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+  // Telemetry fetch when telemetry tab is open
+  useEffect(() => {
+    if (!selectedId || panelTab !== "telemetry" || !selectedBoat) return;
+    let cancelled = false;
+    async function load() {
+      try {
+        const r = await fetch(`/api/telemetry/${boatSlug(selectedBoat.name)}`);
+        if (!r.ok) return;
+        const j = await r.json();
+        if (!cancelled && !j.error) setTelemetry(j);
+      } catch {}
+    }
+    load();
+    const t = setInterval(load, 30000);
+    return () => { cancelled = true; clearInterval(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, panelTab, selectedBoat?.name]);
+
   function updateBoats(fn) {
     setBoats(prev => { const n = fn(prev); storageSet("hara-boats", n); return n; });
   }
@@ -153,6 +176,8 @@ export default function HaraMarina() {
   function openPanel(id) {
     const b = getBoat(id); if (!b) return;
     setSelectedId(id); setDraft({...b, equipment:[...b.equipment]}); setEditMode(false);
+    setPanelTab("details");
+    setTelemetry(null);
   }
   function closePanel() { setSelectedId(null); setEditMode(false); setDraft(null); }
   function saveEdit() {
@@ -324,6 +349,68 @@ export default function HaraMarina() {
           <div style={{position:"absolute",right:-18,top:0,bottom:0,width:18,
             background:"linear-gradient(to right,rgba(90,72,40,0.8),rgba(60,48,28,0.4))",
             borderTop:"1px solid rgba(138,106,48,0.3)",borderBottom:"1px solid rgba(138,106,48,0.3)"}}/>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Telemetry tab (in-side-panel) ─────────────────────────────────────────────
+  function TelemetryTab({ telemetry, boat }) {
+    if (!telemetry) {
+      return <div style={{fontSize:11,color:"#5a8aaa",textAlign:"center",padding:"20px 0"}}>◌ loading telemetry…</div>;
+    }
+    const t = telemetry;
+    const tile = (label, value, unit, color = "#e8f4f8") => {
+      const blank = value === null || value === undefined || value === "";
+      return (
+        <div style={{
+          flex:"1 1 calc(50% - 6px)",minWidth:0,
+          background:"rgba(255,255,255,0.03)",border:"1px solid rgba(126,171,200,0.1)",
+          borderRadius:5,padding:"7px 9px",
+        }}>
+          <div style={{fontSize:8,letterSpacing:1.5,color:"#7eabc8",textTransform:"uppercase",marginBottom:2}}>{label}</div>
+          <div style={{fontSize:14,fontWeight:"bold",color}}>
+            {blank ? <em style={{color:"#3a5a6a"}}>—</em> : value}
+            {!blank && unit && <span style={{fontSize:9,color:"#5a8aaa",marginLeft:3,fontWeight:"normal"}}>{unit}</span>}
+          </div>
+        </div>
+      );
+    };
+    const lastSeen = t.last_seen_ago < 60
+      ? `${t.last_seen_ago}s ago`
+      : `${Math.round(t.last_seen_ago/60)} min ago`;
+    return (
+      <div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+          <div style={{fontSize:9,color:t.last_seen_ago<120?"#2a9a4a":"#a08040",letterSpacing:1}}>
+            ● live · {lastSeen}
+          </div>
+          <Link href={`/${boatSlug(boat.name)}`} target="_blank" rel="noreferrer"
+            style={{fontSize:9,color:"#6ab0e8",letterSpacing:1,textDecoration:"none"}}>
+            full page ↗
+          </Link>
+        </div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+          {tile("Battery", t.battery.voltage.toFixed(2), "V", t.battery.voltage<12.0?"#e08040":"#2a9a4a")}
+          {tile("Charge", t.battery.percent, "%", t.battery.percent<30?"#e08040":"#9ec8e0")}
+          {tile("Shore power", t.shore_power?"On":"Off", "", t.shore_power?"#2a9a4a":"#a08040")}
+          {tile("Bilge water", t.bilge.water_cm.toFixed(1), "cm", t.bilge.water_cm>4?"#e08040":"#6ab0e8")}
+          {tile("Pump 24h", t.bilge.pump_cycles_24h, "cyc")}
+          {tile("Cabin temp", t.cabin.temperature_c.toFixed(1), "°C", "#f0c040")}
+          {tile("Humidity", t.cabin.humidity_pct, "%")}
+          {tile("Heel", t.heel_deg.toFixed(1), "°", Math.abs(t.heel_deg)>3?"#e08040":"#9ec8e0")}
+        </div>
+        <div style={{marginTop:10,padding:"8px 10px",background:"rgba(255,255,255,0.03)",
+          border:"1px solid rgba(126,171,200,0.1)",borderRadius:5}}>
+          <div style={{fontSize:8,letterSpacing:1.5,color:"#7eabc8",textTransform:"uppercase",marginBottom:3}}>Position</div>
+          <div style={{fontFamily:"monospace",fontSize:11,color:"#e8f4f8"}}>
+            {t.position.lat.toFixed(5)}°N, {t.position.lon.toFixed(5)}°E
+          </div>
+          <a href={`https://www.openstreetmap.org/?mlat=${t.position.lat}&mlon=${t.position.lon}#map=17/${t.position.lat}/${t.position.lon}`}
+             target="_blank" rel="noreferrer"
+             style={{fontSize:9,color:"#6ab0e8",letterSpacing:1,textDecoration:"none"}}>
+            Open in map ↗
+          </a>
         </div>
       </div>
     );
@@ -784,7 +871,23 @@ export default function HaraMarina() {
                           style={{width:26,height:18,border:"none",cursor:"pointer",background:"none"}}/>}
                       </div>
                     </div>
+                    <div style={{display:"flex",borderBottom:"1px solid rgba(126,171,200,0.08)"}}>
+                      {[{id:"details",label:"📋 Details"},{id:"telemetry",label:"🛰 Telemetry"}].map(t=>(
+                        <button key={t.id} onClick={()=>setPanelTab(t.id)} style={{
+                          flex:1,padding:"8px 4px",cursor:"pointer",fontSize:10,letterSpacing:1.5,
+                          background:panelTab===t.id?"rgba(126,171,200,0.08)":"transparent",
+                          border:"none",borderBottom:panelTab===t.id?"2px solid #f0c040":"2px solid transparent",
+                          color:panelTab===t.id?"#e8f4f8":"#5a8aaa",fontFamily:"inherit"}}>
+                          {t.label}
+                        </button>
+                      ))}
+                      <Link href={`/${boatSlug(draft.name)}`} target="_blank" rel="noreferrer"
+                        style={{padding:"8px 10px",fontSize:10,letterSpacing:1.5,
+                          color:"#7eabc8",textDecoration:"none",borderBottom:"2px solid transparent"}}
+                        title="Open full boat page">↗</Link>
+                    </div>
                     <div style={{flex:1,overflowY:"auto",padding:"12px 16px"}}>
+                      {panelTab === "details" && <>
                       <Field label="Owner / Omanik" fieldKey="owner" placeholder="Firstname Lastname"/>
                       <Field label="Vessel Model" fieldKey="model" placeholder="e.g. Beneteau First 35"/>
                       <div style={{display:"flex",gap:8}}>
@@ -832,6 +935,10 @@ export default function HaraMarina() {
                         <div style={{marginTop:4,paddingTop:10,borderTop:"1px solid rgba(126,171,200,0.08)"}}>
                           <div style={{fontSize:10,color:"#f0a020",letterSpacing:1}}>🏗 In queue — slot #{queue.findIndex(e=>e.boatId===selectedId)+1}</div>
                         </div>
+                      )}
+                      </>}
+                      {panelTab === "telemetry" && (
+                        <TelemetryTab telemetry={telemetry} boat={selectedBoat}/>
                       )}
                     </div>
                     <div style={{padding:"10px 16px",borderTop:"1px solid rgba(126,171,200,0.08)",display:"flex",gap:8}}>
