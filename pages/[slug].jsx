@@ -3,20 +3,30 @@ import Head from "next/head";
 import Link from "next/link";
 import { INITIAL_BOATS } from "../lib/constants";
 import { makeTelemetry } from "../lib/telemetry";
+import { verifySession, SESSION_COOKIE_NAME } from "../lib/auth";
+import { canViewBoat } from "../lib/owners";
 
 const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-export async function getStaticPaths() {
-  return {
-    paths: INITIAL_BOATS.map((b) => ({ params: { slug: norm(b.name) } })),
-    fallback: "blocking",
-  };
-}
-
-export async function getStaticProps({ params }) {
-  const boat = INITIAL_BOATS.find((b) => norm(b.name) === params.slug);
+export async function getServerSideProps({ req, params }) {
+  const slug = params.slug;
+  const boat = INITIAL_BOATS.find((b) => norm(b.name) === slug);
   if (!boat) return { notFound: true };
-  return { props: { initialBoat: boat }, revalidate: 60 };
+
+  const token = req.cookies?.[SESSION_COOKIE_NAME];
+  const session = await verifySession(token);
+  const email = session?.email;
+
+  if (!email || !canViewBoat(email, slug)) {
+    return {
+      redirect: {
+        destination: `/login?next=${encodeURIComponent(`/${slug}`)}`,
+        permanent: false,
+      },
+    };
+  }
+
+  return { props: { initialBoat: boat, viewerEmail: email } };
 }
 
 function Stat({ label, value, unit, color = "#e8f4f8", big }) {
@@ -26,7 +36,7 @@ function Stat({ label, value, unit, color = "#e8f4f8", big }) {
       background:"linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
       border:"1px solid rgba(126,171,200,0.18)",
       borderRadius:8, padding:"12px 14px", flex:"1 1 140px", minWidth:140,
-    }}>
+    }}>, viewerEmail
       <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:4}}>{label}</div>
       <div style={{fontSize:big?26:18,fontWeight:"bold",color,fontFamily:"Georgia, serif"}}>
         {isBlank ? <em style={{color:"#3a5a6a"}}>—</em> : value}
@@ -121,10 +131,18 @@ export default function BoatPage({ initialBoat }) {
           <Link href="/" style={{textDecoration:"none",color:"#7eabc8",fontSize:11,letterSpacing:2}}>
             ← HARA MARINA
           </Link>
-          <div style={{textAlign:"right"}}>
-            <div style={{fontSize:8,letterSpacing:3,color:"#7eabc8",textTransform:"uppercase"}}>Dock {boat.section}</div>
-            <div style={{fontSize:9,color:fresh?"#2a9a4a":"#a08040",letterSpacing:1,marginTop:1}}>
-              {fresh?"● live":"◌ stale"} · {lastSeen}
+          <div style={{display:"flex",alignItems:"center",gap:14}}>
+            {viewerEmail && (
+              <div style={{fontSize:9,color:"#5a8aaa",letterSpacing:1}}>
+                {viewerEmail} ·{" "}
+                <a href="/api/auth/logout" style={{color:"#7eabc8",textDecoration:"none"}}>sign out</a>
+              </div>
+            )}
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:8,letterSpacing:3,color:"#7eabc8",textTransform:"uppercase"}}>Dock {boat.section}</div>
+              <div style={{fontSize:9,color:fresh?"#2a9a4a":"#a08040",letterSpacing:1,marginTop:1}}>
+                {fresh?"● live":"◌ stale"} · {lastSeen}
+              </div>
             </div>
           </div>
         </div>

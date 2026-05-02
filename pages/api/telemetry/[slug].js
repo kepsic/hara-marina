@@ -1,8 +1,18 @@
 import { makeTelemetry } from "../../../lib/telemetry";
+import { verifySession, SESSION_COOKIE_NAME } from "../../../lib/auth";
+import { canViewBoat } from "../../../lib/owners";
 
 export default async function handler(req, res) {
   const { slug } = req.query;
   if (!slug) return res.status(400).json({ error: "slug required" });
+
+  // Auth: must have a valid session cookie AND own (or admin) this boat.
+  const token = req.cookies?.[SESSION_COOKIE_NAME];
+  const session = await verifySession(token);
+  if (!session?.email || !canViewBoat(session.email, slug)) {
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(401).json({ error: "auth required" });
+  }
 
   // Pull current boats list from KV (falls back to constants)
   let boats = null;
@@ -23,6 +33,7 @@ export default async function handler(req, res) {
   const boat = boats.find((b) => norm(b.name) === norm(slug));
   if (!boat) return res.status(404).json({ error: "boat not found" });
 
-  res.setHeader("Cache-Control", "public, s-maxage=30, stale-while-revalidate=120");
+  // Telemetry is per-user data — do not cache on shared CDNs.
+  res.setHeader("Cache-Control", "private, no-store");
   return res.status(200).json(makeTelemetry(boat));
 }

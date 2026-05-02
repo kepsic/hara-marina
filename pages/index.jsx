@@ -168,6 +168,10 @@ export default function HaraMarina() {
     async function load() {
       try {
         const r = await fetch(`/api/telemetry/${boatSlug(selectedBoat.name)}`);
+        if (r.status === 401) {
+          if (!cancelled) setTelemetry({ authRequired: true });
+          return;
+        }
         if (!r.ok) return;
         const j = await r.json();
         if (!cancelled && !j.error) setTelemetry(j);
@@ -356,6 +360,25 @@ export default function HaraMarina() {
 
   // ── Telemetry tab (in-side-panel) ─────────────────────────────────────────────
   function TelemetryTab({ telemetry, boat }) {
+    if (telemetry?.authRequired) {
+      const slug = boatSlug(boat.name);
+      return (
+        <div style={{textAlign:"center",padding:"22px 12px"}}>
+          <div style={{fontSize:24,marginBottom:8}}>🔒</div>
+          <div style={{fontSize:11,color:"#9ec8e0",marginBottom:14,lineHeight:1.5}}>
+            Live telemetry is available to the boat owner only.
+          </div>
+          <Link href={`/login?next=/${slug}`}
+            style={{
+              display:"inline-block",padding:"7px 14px",fontSize:11,letterSpacing:2,
+              background:"#f0c040",color:"#091820",borderRadius:4,
+              textDecoration:"none",fontWeight:"bold",
+            }}>
+            SIGN IN
+          </Link>
+        </div>
+      );
+    }
     if (!telemetry) {
       return <div style={{fontSize:11,color:"#5a8aaa",textAlign:"center",padding:"20px 0"}}>◌ loading telemetry…</div>;
     }
