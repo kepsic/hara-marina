@@ -120,6 +120,16 @@ export default function HaraMarina() {
   const weatherDragRef = useRef(null);
   const [panelTab, setPanelTab] = useState("details"); // 'details' | 'telemetry'
   const [telemetry, setTelemetry] = useState(null);
+  const [authed, setAuthed] = useState(null); // null=unknown, false=anon, true=signed-in
+
+  // Probe auth state once on mount so we can gate interactive actions.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/onboarding/me", { credentials: "same-origin" })
+      .then((r) => { if (!cancelled) setAuthed(r.ok); })
+      .catch(() => { if (!cancelled) setAuthed(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   // ── Load from KV on mount ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -228,10 +238,14 @@ export default function HaraMarina() {
     });
   }
   function handleBoatTap(id) {
+    if (authed === false) { window.location.href = "/login?next=/"; return; }
     if (swapSrcId!==null) { swapBoats(swapSrcId,id); setSwapSrcId(null); }
     else openPanel(id);
   }
-  function onDragStart(e,id) { setDragId(id); e.dataTransfer.effectAllowed="move"; }
+  function onDragStart(e,id) {
+    if (authed === false) { e.preventDefault(); window.location.href = "/login?next=/"; return; }
+    setDragId(id); e.dataTransfer.effectAllowed="move";
+  }
   function onDragOver(e,id)  { e.preventDefault(); if(id!==dragId) setDragOver(id); }
   function onDrop(e,tid)     { e.preventDefault(); swapBoats(dragId,tid); setDragId(null); setDragOver(null); }
   function onDragEnd()       { setDragId(null); setDragOver(null); }
@@ -821,11 +835,20 @@ export default function HaraMarina() {
             ))}
           </div>
 
-          <div style={{textAlign:"right"}}>
-            <div style={{fontSize:9,color:"#5a8aaa",letterSpacing:1}}>BERTHS</div>
-            <div style={{fontSize:20,color:"#f0c040",fontWeight:"bold"}}>{boats.length}</div>
-            <div style={{fontSize:8,color:synced?"#2a9a4a":"#7eabc8",letterSpacing:1,marginTop:1}}>
-              {synced?"● live":"◌ loading…"}
+          <div style={{textAlign:"right",display:"flex",alignItems:"center",gap:14}}>
+            {authed === false && (
+              <Link href="/login?next=/" style={{
+                fontSize:10,letterSpacing:2,color:"#091820",background:"#f0c040",
+                padding:"6px 12px",borderRadius:4,textDecoration:"none",fontWeight:"bold"}}>
+                SIGN IN
+              </Link>
+            )}
+            <div>
+              <div style={{fontSize:9,color:"#5a8aaa",letterSpacing:1}}>BERTHS</div>
+              <div style={{fontSize:20,color:"#f0c040",fontWeight:"bold"}}>{boats.length}</div>
+              <div style={{fontSize:8,color:synced?"#2a9a4a":"#7eabc8",letterSpacing:1,marginTop:1}}>
+                {synced?"● live":"◌ loading…"}
+              </div>
             </div>
           </div>
         </div>
