@@ -623,8 +623,14 @@ export default function HaraMarina() {
         <div style={{padding:"6px 14px 12px"}}>
           {stat("Air temp", w.airtemperature, "°C", "#f0c040")}
           {stat("Sea temp", w.watertemperature, "°C", "#6ab0e8")}
-          {stat("Sea level", w.waterlevel, "cm", "#6ab0e8")}
-          {w.waterlevel_eh2000 !== null && stat("EH2000", w.waterlevel_eh2000, "cm")}
+          {/* Estonian stations report sea level relative to EH2000 datum;
+              the legacy `waterlevel` (BK77) field is usually empty. */}
+          {stat(
+            "Sea level",
+            w.waterlevel_eh2000 ?? w.waterlevel,
+            "cm EH2000",
+            "#6ab0e8",
+          )}
           {stat("Pressure", w.airpressure, "hPa")}
           {stat("Humidity", w.relativehumidity, "%")}
           {w.phenomenon && (
