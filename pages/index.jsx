@@ -465,13 +465,15 @@ export default function HaraMarina() {
   }
   function WindRose({ dir, speed, gust }) {
     // dir = degrees the wind is coming FROM (meteorological convention)
+    // Marina map orientation: boat bows point right = North.
+    // So rotate the rose 90° CW (N→right, E→down, S→left, W→up).
     const size = 150, c = size / 2, r = c - 12;
     const cardinals = [["N",0],["E",90],["S",180],["W",270]];
     const ticks = Array.from({ length: 16 }, (_, i) => i * 22.5);
     const hasDir = typeof dir === "number" && !isNaN(dir);
     const arrowFrom = hasDir ? dir : 0;
-    // Arrow body points FROM origin direction TO center (showing where wind is going)
-    const rad = (a) => (a - 90) * Math.PI / 180;
+    // No -90 offset → 0° points right (= North on this map).
+    const rad = (a) => a * Math.PI / 180;
     const tipX = c - Math.cos(rad(arrowFrom)) * (r - 8);
     const tipY = c - Math.sin(rad(arrowFrom)) * (r - 8);
     const tailX = c + Math.cos(rad(arrowFrom)) * (r - 18);
