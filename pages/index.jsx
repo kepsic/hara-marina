@@ -436,6 +436,20 @@ export default function HaraMarina() {
     const lastSeen = t.last_seen_ago < 60
       ? `${t.last_seen_ago}s ago`
       : `${Math.round(t.last_seen_ago/60)} min ago`;
+    // Defensive accessors — live MQTT payloads from the bridge are often
+    // partial (the boat only publishes what Cerbo / NMEA2000 actually
+    // exposes). Never assume any nested field exists.
+    const num = (v, d = 1) => (typeof v === "number" && !isNaN(v) ? v.toFixed(d) : null);
+    const battV = num(t.battery?.voltage, 2);
+    const battPct = typeof t.battery?.percent === "number" ? t.battery.percent : null;
+    const shore = typeof t.shore_power === "boolean" ? (t.shore_power ? "On" : "Off") : null;
+    const bilgeCm = num(t.bilge?.water_cm, 1);
+    const bilgeCyc = typeof t.bilge?.pump_cycles_24h === "number" ? t.bilge.pump_cycles_24h : null;
+    const cabinT = num(t.cabin?.temperature_c, 1);
+    const cabinH = typeof t.cabin?.humidity_pct === "number" ? t.cabin.humidity_pct : null;
+    const heel = num(t.heel_deg, 1);
+    const lat = typeof t.position?.lat === "number" ? t.position.lat : null;
+    const lon = typeof t.position?.lon === "number" ? t.position.lon : null;
     return (
       <div>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
@@ -448,26 +462,32 @@ export default function HaraMarina() {
           </Link>
         </div>
         <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-          {tile("Battery", t.battery.voltage.toFixed(2), "V", t.battery.voltage<12.0?"#e08040":"#2a9a4a")}
-          {tile("Charge", t.battery.percent, "%", t.battery.percent<30?"#e08040":"#9ec8e0")}
-          {tile("Shore power", t.shore_power?"On":"Off", "", t.shore_power?"#2a9a4a":"#a08040")}
-          {tile("Bilge water", t.bilge.water_cm.toFixed(1), "cm", t.bilge.water_cm>4?"#e08040":"#6ab0e8")}
-          {tile("Pump 24h", t.bilge.pump_cycles_24h, "cyc")}
-          {tile("Cabin temp", t.cabin.temperature_c.toFixed(1), "°C", "#f0c040")}
-          {tile("Humidity", t.cabin.humidity_pct, "%")}
-          {tile("Heel", t.heel_deg.toFixed(1), "°", Math.abs(t.heel_deg)>3?"#e08040":"#9ec8e0")}
+          {tile("Battery", battV, "V", battV !== null && parseFloat(battV) < 12.0 ? "#e08040" : "#2a9a4a")}
+          {tile("Charge", battPct, "%", battPct !== null && battPct < 30 ? "#e08040" : "#9ec8e0")}
+          {tile("Shore power", shore, "", shore === "On" ? "#2a9a4a" : "#a08040")}
+          {tile("Bilge water", bilgeCm, "cm", bilgeCm !== null && parseFloat(bilgeCm) > 4 ? "#e08040" : "#6ab0e8")}
+          {tile("Pump 24h", bilgeCyc, "cyc")}
+          {tile("Cabin temp", cabinT, "°C", "#f0c040")}
+          {tile("Humidity", cabinH, "%")}
+          {tile("Heel", heel, "°", heel !== null && Math.abs(parseFloat(heel)) > 3 ? "#e08040" : "#9ec8e0")}
         </div>
         <div style={{marginTop:10,padding:"8px 10px",background:"rgba(255,255,255,0.03)",
           border:"1px solid rgba(126,171,200,0.1)",borderRadius:5}}>
           <div style={{fontSize:8,letterSpacing:1.5,color:"#7eabc8",textTransform:"uppercase",marginBottom:3}}>Position</div>
-          <div style={{fontFamily:"monospace",fontSize:11,color:"#e8f4f8"}}>
-            {t.position.lat.toFixed(5)}°N, {t.position.lon.toFixed(5)}°E
-          </div>
-          <a href={`https://www.openstreetmap.org/?mlat=${t.position.lat}&mlon=${t.position.lon}#map=17/${t.position.lat}/${t.position.lon}`}
-             target="_blank" rel="noreferrer"
-             style={{fontSize:9,color:"#6ab0e8",letterSpacing:1,textDecoration:"none"}}>
-            Open in map ↗
-          </a>
+          {lat !== null && lon !== null ? (
+            <>
+              <div style={{fontFamily:"monospace",fontSize:11,color:"#e8f4f8"}}>
+                {lat.toFixed(5)}°N, {lon.toFixed(5)}°E
+              </div>
+              <a href={`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=17/${lat}/${lon}`}
+                 target="_blank" rel="noreferrer"
+                 style={{fontSize:9,color:"#6ab0e8",letterSpacing:1,textDecoration:"none"}}>
+                Open in map ↗
+              </a>
+            </>
+          ) : (
+            <div style={{fontFamily:"monospace",fontSize:11,color:"#3a5a6a"}}>—</div>
+          )}
         </div>
       </div>
     );
