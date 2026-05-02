@@ -468,18 +468,21 @@ export default function HaraMarina() {
   }
   function WindRose({ dir, speed, gust }) {
     // dir = degrees the wind is coming FROM (meteorological convention).
-    // We draw a STANDARD compass (N=top, E=right, S=bottom, W=left) to match
-    // every other weather app (Windy, Ilmateenistus, etc.) and make the
-    // reading unambiguous regardless of how the marina map is oriented.
-    // The arrow points DOWNWIND — the direction the wind is blowing toward —
-    // also matching Windy. So a SW wind (223°) → arrow tip in the NE quadrant.
+    // The rose is rotated to MATCH the marina map: boats lie East-West with
+    // bows pointing South (left) and sterns pointing North (right). Docks
+    // are on the south (left) side. So the rose's N sits at the RIGHT of
+    // the dial, S at the LEFT, E at the TOP, W at the BOTTOM.
+    // The arrow points DOWNWIND (where wind is going) so you can read
+    // directly which side of the boat the wind is hitting.
+    // Example: south wind (180°, blowing from south to north) → arrow
+    // points to the RIGHT (toward N), i.e. the wind is hitting the bows.
     const size = 150, c = size / 2, r = c - 12;
     const cardinals = [["N",0],["E",90],["S",180],["W",270]];
     const ticks = Array.from({ length: 16 }, (_, i) => i * 22.5);
     const hasDir = typeof dir === "number" && !isNaN(dir);
-    // 0° at top, clockwise. screen-x = sin(deg), screen-y = -cos(deg).
-    const sx = (deg) => Math.sin(deg * Math.PI / 180);
-    const sy = (deg) => -Math.cos(deg * Math.PI / 180);
+    // Bearing → screen vector with N at right (+x), E at top (-y).
+    const sx = (deg) => Math.cos(deg * Math.PI / 180);
+    const sy = (deg) => -Math.sin(deg * Math.PI / 180);
     const downwind = hasDir ? (dir + 180) % 360 : 0;
     const tipX  = c + sx(downwind) * (r - 8);
     const tipY  = c + sy(downwind) * (r - 8);
