@@ -105,6 +105,8 @@ export default function BoatPage({ initialBoat }) {
         <title>{boat.name} · Hara Marina</title>
         <meta name="viewport" content="width=device-width, initial-scale=1"/>
         <meta name="theme-color" content="#091820"/>
+        <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex"/>
+        <meta name="googlebot" content="noindex, nofollow"/>
       </Head>
 
       <div style={{

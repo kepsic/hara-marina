@@ -762,6 +762,8 @@ export default function HaraMarina() {
         <title>Hara Marina</title>
         <meta name="viewport" content="width=device-width, initial-scale=1"/>
         <meta name="theme-color" content="#091820"/>
+        <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex"/>
+        <meta name="googlebot" content="noindex, nofollow"/>
       </Head>
 
       <div style={{height:"100vh",background:"#091820",fontFamily:"'Georgia','Times New Roman',serif",display:"flex",flexDirection:"column",overflow:"hidden"}}>

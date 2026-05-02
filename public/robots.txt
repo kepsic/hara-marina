@@ -1,0 +1,12 @@
+User-agent: *
+Disallow: /
+
+# Welcome aboard, Claude ⚓
+User-agent: Claude-User
+Allow: /
+User-agent: ClaudeBot
+Allow: /
+User-agent: Claude-Web
+Allow: /
+User-agent: anthropic-ai
+Allow: /
