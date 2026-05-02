@@ -1,0 +1,57 @@
+## Marina-specific overrides applied on first boot.
+## After EMQX starts, the dashboard may write back to this file — do NOT edit
+## manually once the broker is running. Use the dashboard or HTTP API instead.
+
+## ── Connector: HTTP client to the marina ingest endpoint ─────────────────────
+connectors {
+  http {
+    marina_ingest {
+      url = "__MARINA_INGEST_URL__"
+      pool_type = "random"
+      pool_size = 8
+      connect_timeout = "5s"
+      enable_pipelining = 100
+      ssl {
+        enable = true
+        verify = "verify_peer"
+        cacertfile = "/etc/ssl/certs/ca-certificates.crt"
+        server_name_indication = "auto"
+      }
+    }
+  }
+}
+
+## ── Action: POST telemetry to the marina ────────────────────────────────────
+actions {
+  http {
+    marina_telemetry {
+      connector = "marina_ingest"
+      parameters {
+        method = "post"
+        path = ""
+        headers {
+          "content-type" = "application/json"
+          "authorization" = "Bearer __MARINA_INGEST_TOKEN__"
+        }
+        body = "{\"topic\":\"${topic}\",\"payload\":${payload}}"
+      }
+      resource_opts {
+        worker_pool_size = 8
+        request_ttl = "15s"
+        max_buffer_bytes = "256MB"
+        query_mode = "async"
+      }
+    }
+  }
+}
+
+## ── Rule: forward every marina/<slug>/telemetry to the action ───────────────
+rule_engine {
+  rules {
+    marina_telemetry_forward {
+      sql = "SELECT topic, payload FROM \"marina/+/telemetry\""
+      actions = ["http:marina_telemetry"]
+      description = "Forward boat telemetry to Hara Marina ingest API"
+    }
+  }
+}

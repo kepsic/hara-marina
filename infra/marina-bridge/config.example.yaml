@@ -1,0 +1,21 @@
+# marina-bridge config — example
+# Generate a real one from https://hara-marina.vercel.app/onboard
+
+slug: "moi"
+publish_interval: 30s
+
+marina:
+  broker:   "tcp://tcp.railway.app:NNNNN"
+  username: "boat-moi"
+  password: "REPLACE_ME"
+  topic:    "marina/moi/telemetry"
+
+sources:
+  cerbo:
+    enabled: true
+    broker:  "tcp://venus.local:1883"
+    vrm_id:  "REPLACE_ME"
+
+  ydwg:
+    enabled: false
+    address: "192.168.4.1:1457"

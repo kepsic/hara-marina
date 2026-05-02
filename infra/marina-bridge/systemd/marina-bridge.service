@@ -1,0 +1,19 @@
+[Unit]
+Description=Hara Marina telemetry bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/marina-bridge -config /etc/marina-bridge.yaml
+Restart=always
+RestartSec=10
+User=marina
+Group=marina
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
