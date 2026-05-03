@@ -5,6 +5,7 @@ import { INITIAL_BOATS } from "../lib/constants";
 import { makeTelemetry } from "../lib/telemetry";
 import { verifySession, SESSION_COOKIE_NAME } from "../lib/auth";
 import { canViewBoat } from "../lib/owners";
+import BoatPhotos from "../components/BoatPhotos";
 
 const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
@@ -256,6 +257,11 @@ export default function BoatPage({ initialBoat, viewerEmail }) {
               {boat.notes}
             </div>
           )}
+        </Section>
+
+        {/* Photos */}
+        <Section title="📷 Photos">
+          <BoatPhotos slug={slug} color={boat.color} />
         </Section>
 
         <div style={{padding:"24px 20px 40px",textAlign:"center",fontSize:9,color:"#3a5a6a",letterSpacing:2}}>
