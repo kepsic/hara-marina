@@ -48,6 +48,8 @@ export default function BoatWindRose({
   apparentSpeedKn,
   headingDeg,
   cogDeg,
+  centerModeLabel,
+  relativeModeLabel,
   size = 240,
 }) {
   const c = size / 2;
@@ -60,11 +62,18 @@ export default function BoatWindRose({
   const bow = hasHeading ? headingDeg : (hasCog ? cogDeg : null);
 
   const hasTrue = num(trueDirDeg);
-  const hasApparent = num(apparentAngle) && bow !== null;
-  // Apparent wind compass bearing = boat bow + relative angle (mod 360).
+  const hasApparent = num(apparentAngle);
+  const hasApparentSpeed = num(apparentSpeedKn);
+  // Apparent wind bearing = bow + relative angle. If bow is unavailable,
+  // render in relative mode with a virtual bow at north so direction remains visible.
+  const apparentRef = bow !== null ? bow : 0;
+  const apparentIsRelative = bow === null;
   const apparentDir = hasApparent
-    ? ((bow + apparentAngle) % 360 + 360) % 360
+    ? ((apparentRef + apparentAngle) % 360 + 360) % 360
     : null;
+  const centerSpeedKn = num(trueSpeedKn) ? trueSpeedKn : (hasApparentSpeed ? apparentSpeedKn : null);
+  const centerMode = centerModeLabel || (num(trueSpeedKn) ? "M/S TRUE" : (hasApparentSpeed ? "M/S APP" : "M/S TRUE"));
+  const relLabel = relativeModeLabel || "APP";
 
   // Convert wind bearing FROM to an arrow that points TO the centre.
   function arrow(deg, color, width = 3, length = r - 8, tailOffset = 14) {
@@ -179,21 +188,37 @@ export default function BoatWindRose({
       {/* Bow indicator */}
       {bowMarker()}
 
+      {/* Boat shape at center — pointing north */}
+      <g>
+        {/* Hull */}
+        <path d={`M ${c - 8},${c + 6} L ${c},${c - 12} L ${c + 8},${c + 6} Z`}
+          fill="rgba(232,244,248,0.85)" stroke="#7eabc8" strokeWidth="1"/>
+        {/* Keel line */}
+        <line x1={c} y1={c + 6} x2={c} y2={c + 12}
+          stroke="#7eabc8" strokeWidth="1" opacity="0.6"/>
+      </g>
+
       {/* Centre readout */}
       <text x={c} y={c - 6} textAnchor="middle"
         fontSize="22" fontWeight="bold" fill="#e8f4f8" fontFamily="Georgia, serif">
-        {num(trueSpeedKn) ? knToMs(trueSpeedKn).toFixed(1) : "—"}
+        {centerSpeedKn != null ? knToMs(centerSpeedKn).toFixed(1) : "—"}
       </text>
       <text x={c} y={c + 8} textAnchor="middle"
-        fontSize="8" letterSpacing="2" fill="#7eabc8">M/S TRUE</text>
-      {num(apparentSpeedKn) && (
+        fontSize="8" letterSpacing="2" fill="#7eabc8">{centerMode}</text>
+      {hasApparentSpeed && centerMode === "M/S TRUE" && (
         <text x={c} y={c + 22} textAnchor="middle" fontSize="8"
           fill="rgba(106,212,232,0.85)" letterSpacing="1">
           AWS {knToMs(apparentSpeedKn).toFixed(1)}
         </text>
       )}
-      {hasTrue && (
+      {apparentIsRelative && hasApparent && (
         <text x={c} y={c + 34} textAnchor="middle" fontSize="7"
+          fill="rgba(106,212,232,0.75)" letterSpacing="1">
+          {relLabel} RELATIVE (BOW UP)
+        </text>
+      )}
+      {hasTrue && (
+        <text x={c} y={apparentIsRelative && hasApparent ? c + 44 : c + 34} textAnchor="middle" fontSize="7"
           fill="rgba(240,192,64,0.7)" letterSpacing="1">
           FROM {Math.round(trueDirDeg)}°
         </text>
