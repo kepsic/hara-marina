@@ -256,6 +256,9 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
   const posLat = isNum(tel.position?.lat) ? tel.position.lat : (isNum(ais?.lat) ? ais.lat : null);
   const posLon = isNum(tel.position?.lon) ? tel.position.lon : (isNum(ais?.lon) ? ais.lon : null);
   const posSource = isNum(tel.position?.lat) && isNum(tel.position?.lon) ? "Onboard GPS" : (isNum(ais?.lat) && isNum(ais?.lon) ? "AIS fallback" : null);
+  const seaTempC = isNum(tel.water_temp_c)
+    ? tel.water_temp_c
+    : (isNum(weather?.watertemperature) ? Number(weather.watertemperature) : null);
   const relays = tel?.relays?.bank1 || {};
 
   async function setRelay(relay, state) {
@@ -638,7 +641,7 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
         )}
 
         {/* Quick live stats on overview */}
-        {(isNum(tel.battery?.voltage) || isNum(tel.water_temp_c) || isNum(tel.dewpoint_c) || isNum(tel.cabin?.humidity_pct)) && (
+        {(isNum(tel.battery?.voltage) || isNum(seaTempC) || isNum(tel.dewpoint_c) || isNum(tel.cabin?.humidity_pct)) && (
           <Section title="📊 Live Snapshot">
             <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
               {isNum(tel.battery?.voltage) && (
@@ -659,8 +662,8 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
                 <Stat label="Dew point" value={fmt(tel.dewpoint_c, 1)} unit="°C" color="#9ec8e0"
                   title="Computed via Magnus formula from cabin temp + humidity when sensor not available"/>
               )}
-              {isNum(tel.water_temp_c) && (
-                <Stat label="Sea temp" value={fmt(tel.water_temp_c, 1)} unit="°C" color="#6ab0e8"/>
+              {isNum(seaTempC) && (
+                <Stat label="Sea temp" value={fmt(seaTempC, 1)} unit="°C" color="#6ab0e8"/>
               )}
             </div>
           </Section>
@@ -754,7 +757,7 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
             <Stat label="Cabin temp" value={fmt(tel.cabin?.temperature_c, 1)} unit="°C" color="#f0c040"/>
             <Stat label="Cabin humidity" value={isNum(tel.cabin?.humidity_pct) ? Math.round(tel.cabin.humidity_pct) : null} unit="%"/>
             <Stat label="Dew point" value={fmt(tel.dewpoint_c, 1)} unit="°C" color="#9ec8e0"/>
-            <Stat label="Sea temp" value={fmt(tel.water_temp_c, 1)} unit="°C" color="#6ab0e8"/>
+            <Stat label="Sea temp" value={fmt(seaTempC, 1)} unit="°C" color="#6ab0e8"/>
           </TelemetryGroup>
 
           <TelemetryGroup title="Motion & Navigation" style={{marginTop:12}}>
