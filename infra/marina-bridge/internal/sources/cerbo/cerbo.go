@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +32,23 @@ import (
 	"github.com/kepsic/hara-marina/marina-bridge/internal/config"
 	"github.com/kepsic/hara-marina/marina-bridge/internal/telemetry"
 )
+
+var (
+	resolvedVRMMu sync.RWMutex
+	resolvedVRMID string
+)
+
+func setResolvedVRMID(v string) {
+	resolvedVRMMu.Lock()
+	defer resolvedVRMMu.Unlock()
+	resolvedVRMID = v
+}
+
+func getResolvedVRMID() string {
+	resolvedVRMMu.RLock()
+	defer resolvedVRMMu.RUnlock()
+	return resolvedVRMID
+}
 
 type valueMsg struct {
 	Value any `json:"value"`
@@ -94,6 +112,7 @@ func Run(ctx context.Context, cfg config.CerboConfig, snap *telemetry.Snapshot) 
 			mu.Lock()
 			resolved = cfg.VrmID
 			mu.Unlock()
+			setResolvedVRMID(cfg.VrmID)
 			filter = "N/" + cfg.VrmID + "/#"
 		}
 		c.Subscribe(filter, 0, func(client mqtt.Client, m mqtt.Message) {
@@ -104,6 +123,7 @@ func Run(ctx context.Context, cfg config.CerboConfig, snap *telemetry.Snapshot) 
 						mu.Lock()
 						resolved = parts[1]
 						mu.Unlock()
+						setResolvedVRMID(parts[1])
 						log.Printf("[cerbo] auto-detected VRM portal id: %s", parts[1])
 						go keepalive(ctx, client, parts[1])
 					})
@@ -208,13 +228,101 @@ func handle(topic string, payload []byte, prefix string, snap *telemetry.Snapsho
 		if v, ok := toFloat(m.Value); ok {
 			snap.SetCabinHumidityPct(v)
 		}
+	case strings.HasPrefix(rel, "temperature/") && strings.HasSuffix(rel, "/DewPoint"):
+		if v, ok := toFloat(m.Value); ok {
+			snap.SetDewpointC(v)
+		}
 	case strings.HasPrefix(rel, "tank/") && strings.HasSuffix(rel, "/Level"):
 		// If owners label a tank "Bilge" Venus reports 0–100 %; we map that
 		// loosely to centimetres for now (1% ≈ 1 cm).
 		if v, ok := toFloat(m.Value); ok {
 			snap.SetBilgeWaterCm(v)
 		}
+	case strings.HasPrefix(rel, "system/0/Ac/") && strings.Contains(rel, "/L1/") && strings.HasSuffix(rel, "/Voltage"):
+		if v, ok := toFloat(m.Value); ok {
+			snap.SetAcVoltageV(v)
+		}
+	case strings.HasPrefix(rel, "system/0/Ac/") && strings.Contains(rel, "/L1/") && strings.HasSuffix(rel, "/Current"):
+		if v, ok := toFloat(m.Value); ok {
+			snap.SetAcCurrentA(v)
+		}
+	case strings.HasPrefix(rel, "system/0/Ac/") && strings.Contains(rel, "/L1/") && strings.HasSuffix(rel, "/Power"):
+		if v, ok := toFloat(m.Value); ok {
+			snap.SetAcPowerW(v)
+		}
+	case strings.HasPrefix(rel, "system/0/Ac/") && strings.Contains(rel, "/L1/") && strings.Contains(rel, "/Energy/") && strings.HasSuffix(rel, "/Forward"):
+		if v, ok := toFloat(m.Value); ok {
+			snap.SetAcEnergyKwhTotal(v)
+		}
+	case strings.HasPrefix(rel, "relay/") && strings.HasSuffix(rel, "/State"):
+		parts := strings.Split(rel, "/")
+		if len(parts) == 3 {
+			idx, err := strconv.Atoi(parts[1])
+			if err == nil && idx >= 0 && idx <= 3 {
+				if v, ok := toFloat(m.Value); ok {
+					snap.SetRelayBank1(idx+1, v >= 0.5)
+				}
+			}
+		}
 	}
+}
+
+// WriteRelay publishes a relay state command to Cerbo GX.
+// Relay index is 1..4 for bank1 relays.
+func WriteRelay(ctx context.Context, cfg config.CerboConfig, relayIndex int, on bool) error {
+	if relayIndex < 1 || relayIndex > 4 {
+		return fmt.Errorf("relay index must be 1..4")
+	}
+	if cfg.Broker == "" {
+		return fmt.Errorf("cerbo broker is empty")
+	}
+	vrmID := cfg.VrmID
+	if vrmID == "" || strings.EqualFold(vrmID, "auto") {
+		vrmID = getResolvedVRMID()
+		if vrmID == "" {
+			return fmt.Errorf("relay control unavailable until Cerbo VRM ID is discovered")
+		}
+	}
+
+	opts := mqtt.NewClientOptions().
+		AddBroker(cfg.Broker).
+		SetClientID(fmt.Sprintf("marina-bridge-cerbo-write-%d", time.Now().UnixNano())).
+		SetUsername(cfg.Username).
+		SetPassword(cfg.Password).
+		SetAutoReconnect(false).
+		SetCleanSession(true)
+
+	client := mqtt.NewClient(opts)
+	if t := client.Connect(); t.WaitTimeout(10*time.Second) && t.Error() != nil {
+		return fmt.Errorf("cerbo relay connect: %w", t.Error())
+	}
+	defer client.Disconnect(200)
+
+	val := 0
+	if on {
+		val = 1
+	}
+	body, _ := json.Marshal(map[string]any{"value": val})
+
+	idx := relayIndex - 1
+	topics := []string{
+		fmt.Sprintf("W/%s/relay/%d/State", vrmID, idx),
+		fmt.Sprintf("W/%s/system/0/Relay/%d/State", vrmID, idx),
+	}
+
+	for _, topic := range topics {
+		tok := client.Publish(topic, 1, false, body)
+		select {
+		case <-tok.Done():
+			if tok.Error() != nil {
+				return fmt.Errorf("cerbo relay publish %s: %w", topic, tok.Error())
+			}
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
+	return nil
 }
 
 // Position arrives in two messages — coalesce.
