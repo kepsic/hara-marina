@@ -1,0 +1,75 @@
+[   77232ms] Identifier 'observer' has already been declared
+[   77303ms] [LOG] Selectize initialization started @ https://www.kpler.com/product/maritime/vessels-api:2311
+[   77311ms] TypeError: Cannot read properties of undefined (reading 'value')
+    at timestamp (https://www.kpler.com/product/maritime/vessels-api:353:215)
+[   77410ms] [LOG] Initializing state @ https://www.kpler.com/product/maritime/vessels-api:2426
+[   77411ms] [LOG] JobFunction value:  Showing other-wrap: false @ https://www.kpler.com/product/maritime/vessels-api:2406
+[   77737ms] [ERROR] [UC Bridge] pushConsentFromUC error: TypeError: a.forEach is not a function
+    at e (<anonymous>:1:120)
+    at d (<anonymous>:2:73) @ :0
+[   77798ms] TypeError: Cannot read properties of undefined (reading 'value')
+    at timestamp (https://www.kpler.com/product/maritime/vessels-api:353:215)
+[   77939ms] [LOG] Slater loaded Kpler [LIVE].js: https://slater.app/13478.js :call_me_hand: @ https://www.kpler.com/product/maritime/vessels-api:259
+[   78266ms] [WARNING] GSAP target .scroll-background not found. https://greensock.com @ https://cdnjs.cloudflare.com/ajax/libs/gsap/3.11.3/gsap.min.js:9
+[   78299ms] TypeError: Cannot read properties of undefined (reading 'value')
+    at timestamp (https://www.kpler.com/product/maritime/vessels-api:353:215)
+[   78674ms] [LOG] HubSpot form ready @ https://www.kpler.com/product/maritime/vessels-api:1744
+[   78684ms] [LOG] HubSpot form ready @ https://www.kpler.com/product/maritime/vessels-api:1744
+[   78753ms] [ERROR] Framing 'https://www.google.com/' violates the following report-only Content Security Policy directive: "frame-ancestors 'self'". The violation has been logged, but no further action has been taken.
+ @ :0
+[   78799ms] TypeError: Cannot read properties of undefined (reading 'value')
+    at timestamp (https://www.kpler.com/product/maritime/vessels-api:353:215)
+[   79299ms] TypeError: Cannot read properties of undefined (reading 'value')
+    at timestamp (https://www.kpler.com/product/maritime/vessels-api:353:215)
+[   79798ms] TypeError: Cannot read properties of undefined (reading 'value')
+    at timestamp (https://www.kpler.com/product/maritime/vessels-api:353:215)
+[   80299ms] TypeError: Cannot read properties of undefined (reading 'value')
+    at timestamp (https://www.kpler.com/product/maritime/vessels-api:353:215)
+[   80316ms] [WARNING] GSAP target [object NodeList] not found. https://greensock.com @ https://cdnjs.cloudflare.com/ajax/libs/gsap/3.11.3/gsap.min.js:9
+[   80334ms] [ERROR] Segment snippet included twice. @ :0
+[   80336ms] [LOG] [HS Tracking] Script started @ :4
+[   80336ms] [LOG] [HS Tracking] Setting up event listener @ :5
+[   80336ms] [LOG] [HS Tracking] Checking for existing form... @ :4
+[   80336ms] [LOG] [HS Tracking] Found existing form with ID: bd1f19e7-aa72-4a3b-90c5-693ff4739bd3 @ :4
+[   80336ms] [LOG] [HS Tracking] Setup complete @ :6
+[   80337ms] [LOG] [UC Bridge] Event-based push (ACCEPT_ALL): {event: consent_status_update, Google Analytics 4: true, Google Analytics: true, Facebook Pixel: true, Facebook Social Plugins: true} @ :1
+[   80800ms] TypeError: Cannot read properties of undefined (reading 'value')
+    at timestamp (https://www.kpler.com/product/maritime/vessels-api:353:215)
+[   80837ms] [LOG] [HS Tracking] Starting field tracking for form: bd1f19e7-aa72-4a3b-90c5-693ff4739bd3 @ :2
+[   80841ms] [LOG] [HS Tracking] Form element found: true @ :2
+[   80841ms] [LOG] [HS Tracking] Found 13 fields @ :3
+[   80841ms] [LOG] [HS Tracking] Attaching to field: 0-1/firstname @ :1
+[   80841ms] [LOG] [HS Tracking] Attaching to field: 0-1/lastname @ :1
+[   80841ms] [LOG] [HS Tracking] Attaching to field: 0-1/email @ :1
+[   80841ms] [LOG] [HS Tracking] Attaching to field: 0-1/company @ :1
+[   80841ms] [LOG] [HS Tracking] Attaching to field: 98dedfd1-87fc-4521-b51f-69cdc667e3f5-2878174549589-input @ :1
+[   80841ms] [LOG] [HS Tracking] Attaching to field:  @ :1
+[   80841ms] [LOG] [HS Tracking] Attaching to field: 98dedfd1-87fc-4521-b51f-69cdc667e3f5-2794412431786-input @ :1
+[   80841ms] [LOG] [HS Tracking] Attaching to field:  @ :1
+[   80841ms] [LOG] [HS Tracking] Attaching to field: 98dedfd1-87fc-4521-b51f-69cdc667e3f5-2816611792633-input @ :1
+[   80841ms] [LOG] [HS Tracking] Attaching to field:  @ :1
+[   80841ms] [LOG] [HS Tracking] Attaching to field: 0-1/privacy_policy @ :1
+[   80841ms] [LOG] [HS Tracking] Attaching to field: 0-1/newsletter_subscriber__c @ :1
+[   80841ms] [LOG] [HS Tracking] Attaching to field: g-recaptcha-response @ :1
+[   80841ms] [LOG] [HS Tracking] MutationObserver active @ :4
+[   81299ms] TypeError: Cannot read properties of undefined (reading 'value')
+    at timestamp (https://www.kpler.com/product/maritime/vessels-api:353:215)
+[   81799ms] TypeError: Cannot read properties of undefined (reading 'value')
+    at timestamp (https://www.kpler.com/product/maritime/vessels-api:353:215)
+[   82112ms] [ERROR] Attestation check for Attribution Reporting on https://www.facebook.com failed. @ https://www.kpler.com/product/maritime/vessels-api:0
+[   82233ms] [ERROR] Failed to load resource: the server responded with a status of 429 () @ https://api.userled.io/api/metrics:0
+[   82299ms] TypeError: Cannot read properties of undefined (reading 'value')
+    at timestamp (https://www.kpler.com/product/maritime/vessels-api:353:215)
+[   82799ms] TypeError: Cannot read properties of undefined (reading 'value')
+    at timestamp (https://www.kpler.com/product/maritime/vessels-api:353:215)
+[   83300ms] TypeError: Cannot read properties of undefined (reading 'value')
+    at timestamp (https://www.kpler.com/product/maritime/vessels-api:353:215)
+[   83799ms] TypeError: Cannot read properties of undefined (reading 'value')
+    at timestamp (https://www.kpler.com/product/maritime/vessels-api:353:215)
+[   97756ms] [WARNING] [GPT] PubAdsService.setTargeting is deprecated, use googletag.setConfig({targeting: ...}) instead.
+https://goo.gle/gpt-message#170 @ https://securepubads.g.doubleclick.net/pagead/managed/js/gpt/m202604280101/pubads_impl.js:18
+[   97758ms] [LOG] prebid-load.js loaded successfully. @ https://htlbid.com/build/a2ee31a1-0ef2-45b3-99cf-94d336413d23/htlbid.js:0
+[   99020ms] [LOG] %craven%c Raven v1.20.0-69wxiu background-color:#000;margin-left:1px;padding:1px 3px;font-size:0.75em;color:#ffffff; font-size:0.9em; @ https://raven-static.aditude.io/prod/1.20.0-69wxiu/raven.js:1
+[   99075ms] [ERROR] Not signed in with the identity provider. @ https://opendata.stackexchange.com/questions/15329/free-source-of-ais-data-api:0
+[   99100ms] [WARNING] [GPT] Slot.setTargeting is deprecated, use Slot.setConfig({targeting: ...}) instead.
+https://goo.gle/gpt-message#171 @ https://securepubads.g.doubleclick.net/pagead/managed/js/gpt/m202604280101/pubads_impl.js:18
