@@ -197,13 +197,25 @@ export default function BoatWindRose({
       {/* Bow indicator */}
       {bowMarker()}
 
-      {/* Boat shape at center — compact, bow-up */}
-      <g transform={`translate(${c} ${c + 6}) rotate(-90) scale(0.42)`} opacity="0.78">
-        {/* Hull silhouette reused from header geometry (normalized around center) */}
-        <path d="M -35 0 C -35 0 -23 -12 9 -12 L 33 -6 L 35 0 L 33 6 L 9 12 C -23 12 -35 0 -35 0 Z"
-          fill="rgba(100,160,120,0.8)" stroke="rgba(186,216,196,0.85)" strokeWidth="1.5"/>
-        <line x1="-3" y1="-9" x2="-3" y2="9" stroke="rgba(186,216,196,0.8)" strokeWidth="1.5"/>
-        <ellipse cx="17" cy="0" rx="9" ry="5.5" fill="rgba(60,100,70,0.7)" stroke="rgba(186,216,196,0.75)" strokeWidth="1"/>
+      {/* Boat shape at center — upright, compact, unobtrusive */}
+      <g transform={`translate(${c} ${c + 8})`} opacity="0.62">
+        <path
+          d="M 0 -20 C 9 -12 11 5 6 20 L -6 20 C -11 5 -9 -12 0 -20 Z"
+          fill="rgba(100,160,120,0.38)"
+          stroke="rgba(186,216,196,0.8)"
+          strokeWidth="1.3"
+        />
+        <line
+          x1="0" y1="-12" x2="0" y2="13"
+          stroke="rgba(186,216,196,0.78)"
+          strokeWidth="1.2"
+        />
+        <ellipse
+          cx="0" cy="6" rx="3.8" ry="5.2"
+          fill="rgba(60,100,70,0.55)"
+          stroke="rgba(186,216,196,0.65)"
+          strokeWidth="0.9"
+        />
       </g>
 
       {/* Centre readout */}
