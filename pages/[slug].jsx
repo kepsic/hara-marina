@@ -734,76 +734,124 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
         {/* ---- Telemetry tab ---- */}
         {activeTab === "telemetry" && (<>
         <Section title="🛰 Telemetry" badge={isDemo ? "DEMO" : null}>
-          <TelemetryGroup title="Electrical">
-            <Stat label="Battery" value={fmt(tel.battery?.voltage, 2)} unit="V"
-              color={isNum(tel.battery?.voltage) && tel.battery.voltage < 12.0 ? "#e08040" : "#2a9a4a"} big/>
-            <Stat label="Battery charge" value={isNum(tel.battery?.percent) ? Math.round(tel.battery.percent) : null} unit="%"
-              color={isNum(tel.battery?.percent) && tel.battery.percent < 30 ? "#e08040" : "#9ec8e0"}/>
-            <Stat label="Shore power" value={typeof tel.shore_power === "boolean" ? (tel.shore_power ? "Connected" : "Disconnected") : null} unit=""
-              color={tel.shore_power ? "#2a9a4a" : "#a08040"}/>
-          </TelemetryGroup>
-
-          <TelemetryGroup title="AC & Energy" style={{marginTop:12}}>
-            <Stat label="AC voltage" value={fmt(tel.ac?.voltage_v, 1)} unit="V" color="#f0c040"/>
-            <Stat label="AC current" value={fmt(tel.ac?.current_a, 1)} unit="A" color="#f0c040"/>
-            <Stat label="AC power" value={isNum(tel.ac?.power_w) ? Math.round(tel.ac.power_w) : null} unit="W" color="#f0c040"/>
-            <Stat label="kWh total" value={fmt(tel.ac?.energy_kwh_total, 2)} unit="kWh" color="#f0c040"/>
-            <Stat label="kWh day" value={fmt(tel.ac?.energy_kwh_day, 2)} unit="kWh"/>
-            <Stat label="kWh month" value={fmt(tel.ac?.energy_kwh_month, 2)} unit="kWh"/>
-            <Stat label="kWh year" value={fmt(tel.ac?.energy_kwh_year, 2)} unit="kWh"/>
-          </TelemetryGroup>
-
-          <TelemetryGroup title="Climate" style={{marginTop:12}}>
-            <Stat label="Cabin temp" value={fmt(tel.cabin?.temperature_c, 1)} unit="°C" color="#f0c040"/>
-            <Stat label="Cabin humidity" value={isNum(tel.cabin?.humidity_pct) ? Math.round(tel.cabin.humidity_pct) : null} unit="%"/>
-            <Stat label="Dew point" value={fmt(tel.dewpoint_c, 1)} unit="°C" color="#9ec8e0"/>
-            <Stat label="Sea temp" value={fmt(seaTempC, 1)} unit="°C" color="#6ab0e8"/>
-          </TelemetryGroup>
-
-          <TelemetryGroup title="Motion & Navigation" style={{marginTop:12}}>
-            <Stat label="Heel" value={fmt(tel.heel_deg, 1)} unit="°"
-              color={isNum(tel.heel_deg) && Math.abs(tel.heel_deg) > 3 ? "#e08040" : "#9ec8e0"}/>
-            <Stat label="Trim" value={fmt(tel.pitch_deg, 1)} unit="°"/>
-            <Stat label="Boat speed" value={fmt(tel.boat_speed_kn, 1)} unit="kn"/>
-            <Stat label="SOG" value={fmt(tel.sog_kn ?? ais?.sog, 1)} unit="kn"/>
-            <Stat label="Heading" value={isNum(tel.heading_deg) ? `${Math.round(tel.heading_deg)}°` : (isNum(ais?.heading) ? `${Math.round(ais.heading)}°` : null)} unit=""/>
-            <Stat label="Log (MFD)" value={fmt(tel.log_total_nm, 1)} unit="NM"/>
-          </TelemetryGroup>
-
-          <TelemetryGroup title="Water & Bilge" style={{marginTop:12}}>
-            <Stat label="Water depth" value={fmt(tel.water_depth_m, 1)} unit="m" color="#6ab0e8"/>
-            {hasBilgeWater && (
-              <Stat label="Bilge water" value={fmt(tel.bilge?.water_cm, 1)} unit="cm"
-                color={tel.bilge.water_cm > 4 ? "#e08040" : "#6ab0e8"}/>
-            )}
-            {hasBilgePump && (
-              <Stat label="Bilge pump 24h" value={tel.bilge.pump_cycles_24h} unit="cycles"/>
-            )}
-          </TelemetryGroup>
-
-          <div style={{marginTop:12,display:"flex",flexWrap:"wrap",gap:12}}>
-            <div style={{
-              flex:"1 1 240px",background:"linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
-              border:"1px solid rgba(126,171,200,0.18)",borderRadius:8,padding:"12px 14px",
-            }}>
-              <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:6}}>Position</div>
-              {isNum(posLat) && isNum(posLon) ? (
-                <>
-                  <div style={{fontFamily:"monospace",fontSize:13,color:"#e8f4f8"}}>
-                    {posLat.toFixed(5)}° N, {posLon.toFixed(5)}° E
-                  </div>
-                  <a href={`https://www.openstreetmap.org/?mlat=${posLat}&mlon=${posLon}#map=17/${posLat}/${posLon}`}
-                     target="_blank" rel="noreferrer"
-                     style={{fontSize:10,color:"#6ab0e8",letterSpacing:1,textDecoration:"none",marginTop:6,display:"inline-block"}}>
-                    Open in map ↗
-                  </a>
-                  {posSource && <div style={{fontSize:10,color:"#5a8aaa",marginTop:6}}>{posSource}</div>}
-                </>
-              ) : (
-                <div style={{fontSize:11,color:"#5a8aaa"}}>— no GPS fix</div>
+          {(isNum(tel.battery?.voltage) || isNum(tel.battery?.percent) || typeof tel.shore_power === "boolean") && (
+            <TelemetryGroup title="Electrical">
+              {isNum(tel.battery?.voltage) && (
+                <Stat label="Battery" value={fmt(tel.battery.voltage, 2)} unit="V"
+                  color={tel.battery.voltage < 12.0 ? "#e08040" : "#2a9a4a"} big/>
               )}
+              {isNum(tel.battery?.percent) && (
+                <Stat label="Battery charge" value={Math.round(tel.battery.percent)} unit="%"
+                  color={tel.battery.percent < 30 ? "#e08040" : "#9ec8e0"}/>
+              )}
+              {typeof tel.shore_power === "boolean" && (
+                <Stat label="Shore power" value={tel.shore_power ? "Connected" : "Disconnected"} unit=""
+                  color={tel.shore_power ? "#2a9a4a" : "#a08040"}/>
+              )}
+            </TelemetryGroup>
+          )}
+
+          {(isNum(tel.ac?.voltage_v) || isNum(tel.ac?.current_a) || isNum(tel.ac?.power_w) || isNum(tel.ac?.energy_kwh_total) || isNum(tel.ac?.energy_kwh_day) || isNum(tel.ac?.energy_kwh_month) || isNum(tel.ac?.energy_kwh_year)) && (
+            <TelemetryGroup title="AC & Energy" style={{marginTop:12}}>
+              {isNum(tel.ac?.voltage_v) && (
+                <Stat label="AC voltage" value={fmt(tel.ac.voltage_v, 1)} unit="V" color="#f0c040"/>
+              )}
+              {isNum(tel.ac?.current_a) && (
+                <Stat label="AC current" value={fmt(tel.ac.current_a, 1)} unit="A" color="#f0c040"/>
+              )}
+              {isNum(tel.ac?.power_w) && (
+                <Stat label="AC power" value={Math.round(tel.ac.power_w)} unit="W" color="#f0c040"/>
+              )}
+              {isNum(tel.ac?.energy_kwh_total) && (
+                <Stat label="kWh total" value={fmt(tel.ac.energy_kwh_total, 2)} unit="kWh" color="#f0c040"/>
+              )}
+              {isNum(tel.ac?.energy_kwh_day) && (
+                <Stat label="kWh day" value={fmt(tel.ac.energy_kwh_day, 2)} unit="kWh"/>
+              )}
+              {isNum(tel.ac?.energy_kwh_month) && (
+                <Stat label="kWh month" value={fmt(tel.ac.energy_kwh_month, 2)} unit="kWh"/>
+              )}
+              {isNum(tel.ac?.energy_kwh_year) && (
+                <Stat label="kWh year" value={fmt(tel.ac.energy_kwh_year, 2)} unit="kWh"/>
+              )}
+            </TelemetryGroup>
+          )}
+
+          {(isNum(tel.cabin?.temperature_c) || isNum(tel.cabin?.humidity_pct) || isNum(tel.dewpoint_c) || isNum(seaTempC)) && (
+            <TelemetryGroup title="Climate" style={{marginTop:12}}>
+              {isNum(tel.cabin?.temperature_c) && (
+                <Stat label="Cabin temp" value={fmt(tel.cabin.temperature_c, 1)} unit="°C" color="#f0c040"/>
+              )}
+              {isNum(tel.cabin?.humidity_pct) && (
+                <Stat label="Cabin humidity" value={Math.round(tel.cabin.humidity_pct)} unit="%"/>
+              )}
+              {isNum(tel.dewpoint_c) && (
+                <Stat label="Dew point" value={fmt(tel.dewpoint_c, 1)} unit="°C" color="#9ec8e0"/>
+              )}
+              {isNum(seaTempC) && (
+                <Stat label="Sea temp" value={fmt(seaTempC, 1)} unit="°C" color="#6ab0e8"/>
+              )}
+            </TelemetryGroup>
+          )}
+
+          {(isNum(tel.heel_deg) || isNum(tel.pitch_deg) || isNum(tel.boat_speed_kn) || isNum(tel.sog_kn) || isNum(ais?.sog) || isNum(tel.heading_deg) || isNum(ais?.heading) || isNum(tel.log_total_nm)) && (
+            <TelemetryGroup title="Motion & Navigation" style={{marginTop:12}}>
+              {isNum(tel.heel_deg) && (
+                <Stat label="Heel" value={fmt(tel.heel_deg, 1)} unit="°"
+                  color={Math.abs(tel.heel_deg) > 3 ? "#e08040" : "#9ec8e0"}/>
+              )}
+              {isNum(tel.pitch_deg) && (
+                <Stat label="Trim" value={fmt(tel.pitch_deg, 1)} unit="°"/>
+              )}
+              {isNum(tel.boat_speed_kn) && (
+                <Stat label="Boat speed" value={fmt(tel.boat_speed_kn, 1)} unit="kn"/>
+              )}
+              {(isNum(tel.sog_kn) || isNum(ais?.sog)) && (
+                <Stat label="SOG" value={fmt(tel.sog_kn ?? ais?.sog, 1)} unit="kn"/>
+              )}
+              {(isNum(tel.heading_deg) || isNum(ais?.heading)) && (
+                <Stat label="Heading" value={isNum(tel.heading_deg) ? `${Math.round(tel.heading_deg)}°` : (isNum(ais?.heading) ? `${Math.round(ais.heading)}°` : null)} unit=""/>
+              )}
+              {isNum(tel.log_total_nm) && (
+                <Stat label="Log (MFD)" value={fmt(tel.log_total_nm, 1)} unit="NM"/>
+              )}
+            </TelemetryGroup>
+          )}
+
+          {(isNum(tel.water_depth_m) || hasBilgeWater || hasBilgePump) && (
+            <TelemetryGroup title="Water & Bilge" style={{marginTop:12}}>
+              {isNum(tel.water_depth_m) && (
+                <Stat label="Water depth" value={fmt(tel.water_depth_m, 1)} unit="m" color="#6ab0e8"/>
+              )}
+              {hasBilgeWater && (
+                <Stat label="Bilge water" value={fmt(tel.bilge.water_cm, 1)} unit="cm"
+                  color={tel.bilge.water_cm > 4 ? "#e08040" : "#6ab0e8"}/>
+              )}
+              {hasBilgePump && (
+                <Stat label="Bilge pump 24h" value={tel.bilge.pump_cycles_24h} unit="cycles"/>
+              )}
+            </TelemetryGroup>
+          )}
+
+          {(isNum(posLat) && isNum(posLon)) && (
+            <div style={{marginTop:12,display:"flex",flexWrap:"wrap",gap:12}}>
+              <div style={{
+                flex:"1 1 240px",background:"linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
+                border:"1px solid rgba(126,171,200,0.18)",borderRadius:8,padding:"12px 14px",
+              }}>
+                <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:6}}>Position</div>
+                <div style={{fontFamily:"monospace",fontSize:13,color:"#e8f4f8"}}>
+                  {posLat.toFixed(5)}° N, {posLon.toFixed(5)}° E
+                </div>
+                <a href={`https://www.openstreetmap.org/?mlat=${posLat}&mlon=${posLon}#map=17/${posLat}/${posLon}`}
+                   target="_blank" rel="noreferrer"
+                   style={{fontSize:10,color:"#6ab0e8",letterSpacing:1,textDecoration:"none",marginTop:6,display:"inline-block"}}>
+                  Open in map ↗
+                </a>
+                {posSource && <div style={{fontSize:10,color:"#5a8aaa",marginTop:6}}>{posSource}</div>}
+              </div>
             </div>
-          </div>
+          )}
         </Section>
         </>)}
 
