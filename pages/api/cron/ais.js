@@ -3,7 +3,7 @@
 
 import { listKnownMmsis, collectAndStore } from "../../../lib/aisStream";
 
-export const config = { maxDuration: 30 };
+export const config = { maxDuration: 60 };
 
 export default async function handler(req, res) {
   // Vercel cron requests carry a known header; also allow manual run with bearer.

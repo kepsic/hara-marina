@@ -344,6 +344,7 @@ function AisStatus({ ais }) {
     );
   }
   const sty = AIS_STATE_STYLE[ais.state] || AIS_STATE_STYLE.unknown;
+  const mtUrl = ais.mmsi ? `https://www.marinetraffic.com/en/ais/details/ships/mmsi:${ais.mmsi}` : null;
   return (
     <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
       <div style={{
@@ -355,9 +356,22 @@ function AisStatus({ ais }) {
           {sty.icon} {sty.text}
         </div>
         <div style={{fontSize:11,color:"#9ec8e0",marginTop:6}}>
-          Distance to Hara: <strong>{fmtDist(ais.distanceM)}</strong>
+          {ais.distanceM != null && <>Distance to Hara: <strong>{fmtDist(ais.distanceM)}</strong></>}
           {ais.lastSeenMs != null && <> · last fix {fmtAge(ais.lastSeenMs)}</>}
         </div>
+        {ais.state === "no_signal" && (
+          <div style={{fontSize:10,color:"#5a8aaa",marginTop:8,lineHeight:1.5}}>
+            AISStream relies on volunteer terrestrial receivers and has limited
+            coverage at Hara. The boat may still be broadcasting — see authoritative
+            position on MarineTraffic below.
+          </div>
+        )}
+        {mtUrl && (
+          <a href={mtUrl} target="_blank" rel="noreferrer"
+             style={{fontSize:10,color:"#6ab0e8",letterSpacing:1,textDecoration:"none",marginTop:8,display:"inline-block"}}>
+            View on MarineTraffic ↗
+          </a>
+        )}
       </div>
 
       <div style={{
