@@ -637,6 +637,35 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
           </Section>
         )}
 
+        {/* Quick live stats on overview */}
+        {(isNum(tel.battery?.voltage) || isNum(tel.water_temp_c) || isNum(tel.dewpoint_c) || isNum(tel.cabin?.humidity_pct)) && (
+          <Section title="📊 Live Snapshot">
+            <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
+              {isNum(tel.battery?.voltage) && (
+                <Stat label="Battery" value={fmt(tel.battery.voltage, 2)} unit="V"
+                  color={tel.battery.voltage < 12.0 ? "#e08040" : "#2a9a4a"} big/>
+              )}
+              {isNum(tel.battery?.percent) && (
+                <Stat label="Charge" value={Math.round(tel.battery.percent)} unit="%"
+                  color={tel.battery.percent < 30 ? "#e08040" : "#9ec8e0"}/>
+              )}
+              {isNum(tel.cabin?.temperature_c) && (
+                <Stat label="Cabin temp" value={fmt(tel.cabin.temperature_c, 1)} unit="°C" color="#f0c040"/>
+              )}
+              {isNum(tel.cabin?.humidity_pct) && (
+                <Stat label="Humidity" value={Math.round(tel.cabin.humidity_pct)} unit="%"/>
+              )}
+              {isNum(tel.dewpoint_c) && (
+                <Stat label="Dew point" value={fmt(tel.dewpoint_c, 1)} unit="°C" color="#9ec8e0"
+                  title="Computed via Magnus formula from cabin temp + humidity when sensor not available"/>
+              )}
+              {isNum(tel.water_temp_c) && (
+                <Stat label="Sea temp" value={fmt(tel.water_temp_c, 1)} unit="°C" color="#6ab0e8"/>
+              )}
+            </div>
+          </Section>
+        )}
+
         {/* Wind — from boat sensors when available, falls back to weather station */}
         <BoatWindSection tel={tel} ais={ais} weather={weather} isDemo={isDemo} />
 

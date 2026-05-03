@@ -30,10 +30,22 @@ export default async function handler(req, res) {
     const live = await getTelemetry(cleanSlug);
     if (live) {
       const last_seen_ago = Math.max(0, Math.floor((Date.now() - (live.ts || Date.now())) / 1000));
+      // Compute dew point from Magnus formula if sensor doesn't provide it
+      let dewpoint_c = live.dewpoint_c;
+      if (dewpoint_c == null) {
+        const T = live.cabin?.temperature_c;
+        const RH = live.cabin?.humidity_pct;
+        if (T != null && RH != null && RH > 0) {
+          const a = 17.625, b = 243.04;
+          const gamma = (a * T) / (b + T) + Math.log(RH / 100);
+          dewpoint_c = +((b * gamma) / (a - gamma)).toFixed(1);
+        }
+      }
       res.setHeader("Cache-Control", "private, no-store");
       return res.status(200).json({
         boat_name: slug,
         ...live,
+        ...(dewpoint_c != null ? { dewpoint_c } : {}),
         timestamp: live.ts,
         last_seen_ago,
         source: "live",
