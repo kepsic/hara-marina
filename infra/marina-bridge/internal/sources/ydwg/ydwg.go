@@ -24,6 +24,8 @@
 //	130310 Environmental Parameters         (water/air temp, pressure)
 //	130311 Environmental Parameters        (temperature, humidity)
 //	130312 Temperature                      (sea/air/cabin temperature)
+//	130313 Humidity                         (inside/outside humidity)
+//	130314 Actual Pressure                  (barometric pressure)
 package ydwg
 
 import (
@@ -217,6 +219,9 @@ func parseLine(ctx context.Context, line string, snap *telemetry.Snapshot, reasm
 	}
 
 	switch pgn {
+	case 60928, 126993:
+		// Address Claim / Heartbeat: protocol-level messages, not telemetry.
+		return
 	case 127508:
 		handleBattery(data, snap)
 	case 127250:
@@ -239,6 +244,10 @@ func parseLine(ctx context.Context, line string, snap *telemetry.Snapshot, reasm
 		handleEnv(data, snap)
 	case 130312:
 		handleTemp130312(data, snap)
+	case 130313:
+		handleHumidity130313(data, snap)
+	case 130314:
+		handlePressure130314(data, snap)
 	default:
 		if _, loaded := seenUnhandledPGN.LoadOrStore(fmt.Sprintf("single:%d", pgn), struct{}{}); !loaded {
 			log.Printf("[ydwg] unhandled single-frame PGN=%d len=%d data=% X", pgn, len(data), data)
@@ -421,6 +430,41 @@ func handleTemp130312(d []byte, snap *telemetry.Snapshot) {
 	case 9:
 		snap.SetDewpointC(tC)
 	}
+}
+
+// PGN 130313: Humidity.
+// d[0]=SID, d[1]=instance, d[2]=source, d[3..4]=actual humidity (0.004 %, uint16 LE)
+func handleHumidity130313(d []byte, snap *telemetry.Snapshot) {
+	if len(d) < 5 {
+		return
+	}
+	source := d[2] & 0x3F
+	raw := uint16(d[3]) | uint16(d[4])<<8
+	if raw == 0xFFFF {
+		return
+	}
+	rh := float64(raw) * 0.004
+	if rh < 0 || rh > 100 {
+		return
+	}
+	// For now map source 0/1 (inside/cabin on common instruments) to cabin humidity.
+	if source == 0 || source == 1 {
+		snap.SetCabinHumidityPct(rh)
+	}
+}
+
+// PGN 130314: Actual Pressure.
+// d[0]=SID, d[1]=instance, d[2]=source, d[3..6]=actual pressure (Pa, uint32 LE)
+func handlePressure130314(d []byte, snap *telemetry.Snapshot) {
+	if len(d) < 7 {
+		return
+	}
+	raw := uint32(d[3]) | uint32(d[4])<<8 | uint32(d[5])<<16 | uint32(d[6])<<24
+	if raw == 0xFFFFFFFF || raw == 0x7FFFFFFF {
+		return
+	}
+	// Pa -> hPa/mbar
+	snap.SetPressureMbar(float64(raw) * 0.01)
 }
 
 // PGN 128267: Water Depth — depth in 0.01 m (uint32 LE) at offset 1.
