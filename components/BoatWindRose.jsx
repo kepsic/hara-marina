@@ -199,14 +199,14 @@ export default function BoatWindRose({
 
       {/* Boat shape at center — pointing north */}
       <g>
-        {/* Outer hull — white */}
-        <path d={`M ${c - 12},${c + 16} L ${c},${c - 22} L ${c + 12},${c + 16} Q ${c + 10},${c + 20} ${c},${c + 24} Q ${c - 10},${c + 20} ${c - 12},${c + 16} Z`}
-          fill="rgba(232,244,248,0.92)" stroke="#7eabc8" strokeWidth="1.5"/>
-        {/* Cabin/cockpit area — darker center */}
-        <circle cx={c} cy={c + 2} r="8" fill="rgba(100,140,160,0.65)" stroke="#7eabc8" strokeWidth="1"/>
-        {/* Keel line */}
-        <line x1={c} y1={c + 16} x2={c} y2={c + 26}
-          stroke="#7eabc8" strokeWidth="1.2" opacity="0.8"/>
+        {/* Hull — elegant elliptical shape, top-down view */}
+        <path d={`M ${c},${c - 20} Q ${c + 14},${c - 8} ${c + 14},${c + 4} Q ${c + 14},${c + 16} ${c},${c + 22} Q ${c - 14},${c + 16} ${c - 14},${c + 4} Q ${c - 14},${c - 8} ${c},${c - 20} Z`}
+          fill="rgba(76,140,100,0.75)" stroke="rgba(186,216,196,0.9)" strokeWidth="2"/>
+        {/* Centerline / mast */}
+        <line x1={c} y1={c - 18} x2={c} y2={c + 20}
+          stroke="rgba(186,216,196,0.8)" strokeWidth="2"/>
+        {/* Cabin / wheelhouse — darker circle on the side */}
+        <circle cx={c + 8} cy={c + 2} r="5" fill="rgba(50,100,70,0.7)" stroke="rgba(186,216,196,0.8)" strokeWidth="1.2"/>
       </g>
 
       {/* Centre readout */}
