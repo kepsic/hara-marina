@@ -46,7 +46,7 @@ function Stat({ label, value, unit, color = "#e8f4f8", big }) {
   );
 }
 
-export default function BoatPage({ initialBoat }) {
+export default function BoatPage({ initialBoat, viewerEmail }) {
   const [boat, setBoat] = useState(initialBoat);
   const slug = norm(initialBoat.name);
   const [tel, setTel] = useState(() => makeTelemetry(initialBoat));
