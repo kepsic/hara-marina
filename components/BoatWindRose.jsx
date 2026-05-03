@@ -199,12 +199,14 @@ export default function BoatWindRose({
 
       {/* Boat shape at center — pointing north */}
       <g>
-        {/* Hull */}
-        <path d={`M ${c - 8},${c + 6} L ${c},${c - 12} L ${c + 8},${c + 6} Z`}
-          fill="rgba(232,244,248,0.85)" stroke="#7eabc8" strokeWidth="1"/>
+        {/* Outer hull — white */}
+        <path d={`M ${c - 6},${c + 8} L ${c},${c - 14} L ${c + 6},${c + 8} Q ${c + 5},${c + 10} ${c},${c + 12} Q ${c - 5},${c + 10} ${c - 6},${c + 8} Z`}
+          fill="rgba(232,244,248,0.9)" stroke="#7eabc8" strokeWidth="1.2"/>
+        {/* Cabin/cockpit area — darker center */}
+        <circle cx={c} cy={c} r="5" fill="rgba(100,140,160,0.6)" stroke="#7eabc8" strokeWidth="0.8"/>
         {/* Keel line */}
-        <line x1={c} y1={c + 6} x2={c} y2={c + 12}
-          stroke="#7eabc8" strokeWidth="1" opacity="0.6"/>
+        <line x1={c} y1={c + 8} x2={c} y2={c + 14}
+          stroke="#7eabc8" strokeWidth="1" opacity="0.7"/>
       </g>
 
       {/* Centre readout */}
