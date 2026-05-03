@@ -61,24 +61,36 @@ type aisMessage struct {
 // ---------- config ----------
 
 type Config struct {
-	APIKey      string
-	BBoxes      [][][]float64
-	MMSIFilter  []string
-	HTTPAuth    string
-	UpstashURL  string
-	UpstashTok  string
-	Port        string
-	SnapshotTTL time.Duration
+	APIKey         string
+	BBoxes         [][][]float64
+	MMSIFilter     []string
+	HTTPAuth       string
+	UpstashURL     string
+	UpstashTok     string
+	Port           string
+	SnapshotTTL    time.Duration
+	TrackMaxPoints int
+	TrackMaxAgeDay int
+	TrackMinSepSec int
+	TrackMinSepM   float64
+	MarinaLat      float64
+	MarinaLon      float64
 }
 
 func loadConfig() (*Config, error) {
 	c := &Config{
-		APIKey:      os.Getenv("AISSTREAM_API_KEY"),
-		HTTPAuth:    os.Getenv("HTTP_AUTH_TOKEN"),
-		UpstashURL:  strings.TrimRight(os.Getenv("UPSTASH_REDIS_REST_URL"), "/"),
-		UpstashTok:  os.Getenv("UPSTASH_REDIS_REST_TOKEN"),
-		Port:        os.Getenv("PORT"),
-		SnapshotTTL: time.Hour,
+		APIKey:         os.Getenv("AISSTREAM_API_KEY"),
+		HTTPAuth:       os.Getenv("HTTP_AUTH_TOKEN"),
+		UpstashURL:     strings.TrimRight(os.Getenv("UPSTASH_REDIS_REST_URL"), "/"),
+		UpstashTok:     os.Getenv("UPSTASH_REDIS_REST_TOKEN"),
+		Port:           os.Getenv("PORT"),
+		SnapshotTTL:    time.Hour,
+		TrackMaxPoints: envInt("TRACK_MAX_POINTS", 5000),
+		TrackMaxAgeDay: envInt("TRACK_MAX_AGE_DAYS", 60),
+		TrackMinSepSec: envInt("TRACK_MIN_SEP_SECONDS", 30),
+		TrackMinSepM:   envFloat("TRACK_MIN_SEP_METERS", 25),
+		MarinaLat:      envFloat("MARINA_LAT", 59.574),
+		MarinaLon:      envFloat("MARINA_LON", 25.7428),
 	}
 	if c.APIKey == "" {
 		return nil, errors.New("AISSTREAM_API_KEY is required")
@@ -285,11 +297,11 @@ type subscribeMsg struct {
 	FilterMessageTypes []string      `json:"FilterMessageTypes,omitempty"`
 }
 
-func runAISClient(ctx context.Context, cfg *Config, store *Store, mirror *Upstash) {
+func runAISClient(ctx context.Context, cfg *Config, store *Store, tracks *TrackStore, mirror *Upstash) {
 	backoff := time.Second
 	maxBackoff := 60 * time.Second
 	for ctx.Err() == nil {
-		if err := connectOnce(ctx, cfg, store, mirror); err != nil {
+		if err := connectOnce(ctx, cfg, store, tracks, mirror); err != nil {
 			log.Printf("ais ws disconnected: %v (reconnect in %s)", err, backoff)
 		}
 		select {
@@ -304,7 +316,7 @@ func runAISClient(ctx context.Context, cfg *Config, store *Store, mirror *Upstas
 	}
 }
 
-func connectOnce(parent context.Context, cfg *Config, store *Store, mirror *Upstash) error {
+func connectOnce(parent context.Context, cfg *Config, store *Store, tracks *TrackStore, mirror *Upstash) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 
@@ -360,11 +372,11 @@ func connectOnce(parent context.Context, cfg *Config, store *Store, mirror *Upst
 			log.Printf("ais ws error message: %s", msg.Error)
 			continue
 		}
-		handleMessage(ctx, &msg, store, mirror)
+		handleMessage(ctx, cfg, &msg, store, tracks, mirror)
 	}
 }
 
-func handleMessage(ctx context.Context, m *aisMessage, store *Store, mirror *Upstash) {
+func handleMessage(ctx context.Context, cfg *Config, m *aisMessage, store *Store, tracks *TrackStore, mirror *Upstash) {
 	mmsi := mmsiFromMeta(m.MetaData)
 	if mmsi == "" {
 		return
@@ -390,6 +402,10 @@ func handleMessage(ctx context.Context, m *aisMessage, store *Store, mirror *Ups
 			return
 		}
 		store.Put(snap)
+		tp := TrackPoint{Lat: snap.Lat, Lon: snap.Lon, Sog: snap.Sog, Cog: snap.Cog, TS: snap.TS}
+		if tracks.Append(snap.MMSI, tp) && mirror != nil {
+			go mirror.AppendTrack(ctx, snap.MMSI, tp, cfg.TrackMaxPoints, cfg.TrackMaxAgeDay)
+		}
 		if mirror != nil {
 			go mirror.PutSnapshot(ctx, snap)
 		}
@@ -441,7 +457,7 @@ func (u *Upstash) PutSnapshot(ctx context.Context, snap Snapshot) {
 
 // ---------- HTTP API ----------
 
-func newServer(cfg *Config, store *Store) http.Handler {
+func newServer(cfg *Config, store *Store, tracks *TrackStore) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -531,7 +547,65 @@ func newServer(cfg *Config, store *Store) http.Handler {
 	}))
 
 	mux.HandleFunc("/api/v1/stats", auth(func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, store.Stats(), 200)
+		st := store.Stats()
+		st["track_points_total"] = tracks.Total()
+		st["track_max_points_per_mmsi"] = cfg.TrackMaxPoints
+		st["track_max_age_days"] = cfg.TrackMaxAgeDay
+		st["marina"] = map[string]float64{"lat": cfg.MarinaLat, "lon": cfg.MarinaLon}
+		writeJSON(w, st, 200)
+	}))
+
+	mux.HandleFunc("/api/v1/track", auth(func(w http.ResponseWriter, r *http.Request) {
+		mmsi := r.URL.Query().Get("mmsi")
+		if mmsi == "" {
+			http.Error(w, "mmsi required", 400)
+			return
+		}
+		since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
+		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+		pts := tracks.Get(mmsi, since, limit)
+		writeJSON(w, map[string]any{
+			"mmsi":   mmsi,
+			"count":  len(pts),
+			"points": pts,
+		}, 200)
+	}))
+
+	mux.HandleFunc("/api/v1/trips", auth(func(w http.ResponseWriter, r *http.Request) {
+		mmsi := r.URL.Query().Get("mmsi")
+		if mmsi == "" {
+			http.Error(w, "mmsi required", 400)
+			return
+		}
+		since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
+		pts := tracks.Get(mmsi, since, 0)
+		trips := DetectTrips(pts, cfg.MarinaLat, cfg.MarinaLon)
+		writeJSON(w, map[string]any{
+			"mmsi":   mmsi,
+			"marina": map[string]float64{"lat": cfg.MarinaLat, "lon": cfg.MarinaLon},
+			"count":  len(trips),
+			"trips":  trips,
+		}, 200)
+	}))
+
+	mux.HandleFunc("/api/v1/summary", auth(func(w http.ResponseWriter, r *http.Request) {
+		mmsi := r.URL.Query().Get("mmsi")
+		if mmsi == "" {
+			http.Error(w, "mmsi required", 400)
+			return
+		}
+		days, _ := strconv.Atoi(r.URL.Query().Get("days"))
+		var since int64
+		if days > 0 {
+			since = time.Now().Add(-time.Duration(days) * 24 * time.Hour).UnixMilli()
+		}
+		pts := tracks.Get(mmsi, since, 0)
+		summ := DailySummaries(pts, cfg.MarinaLat, cfg.MarinaLon)
+		writeJSON(w, map[string]any{
+			"mmsi":  mmsi,
+			"days":  len(summ),
+			"daily": summ,
+		}, 200)
 	}))
 
 	return mux
@@ -608,12 +682,26 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 	store := NewStore(cfg.SnapshotTTL)
+	tracks := NewTrackStore(
+		cfg.TrackMaxPoints,
+		time.Duration(cfg.TrackMaxAgeDay)*24*time.Hour,
+		time.Duration(cfg.TrackMinSepSec)*time.Second,
+		cfg.TrackMinSepM,
+	)
 	mirror := NewUpstash(cfg.UpstashURL, cfg.UpstashTok)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go runAISClient(ctx, cfg, store, mirror)
+	// Restore tracks from Upstash on startup so the service survives restarts.
+	if mirror != nil {
+		loadCtx, loadCancel := context.WithTimeout(ctx, 30*time.Second)
+		keys, points := mirror.LoadAllTracks(loadCtx, tracks)
+		loadCancel()
+		log.Printf("upstash restore: %d mmsis, %d points loaded", keys, points)
+	}
+
+	go runAISClient(ctx, cfg, store, tracks, mirror)
 
 	// periodic sweep
 	go func() {
@@ -632,7 +720,7 @@ func main() {
 	log.Printf("ais-cache listening on :%s", cfg.Port)
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           newServer(cfg, store),
+		Handler:           newServer(cfg, store, tracks),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
