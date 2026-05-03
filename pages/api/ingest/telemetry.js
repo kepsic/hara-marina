@@ -64,6 +64,7 @@ function clean(payload) {
   }
   if (payload.shore_power !== undefined) out.shore_power = !!payload.shore_power;
   if (num(payload.heel_deg) !== undefined) out.heel_deg = num(payload.heel_deg);
+  if (num(payload.water_depth_m) !== undefined) out.water_depth_m = num(payload.water_depth_m);
   return out;
 }
 

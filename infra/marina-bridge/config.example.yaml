@@ -17,5 +17,16 @@ sources:
     vrm_id:  "REPLACE_ME"
 
   ydwg:
+    # Works for both YDWG-02 (gateway) and YDNR-02 (router).
+    # YDNR-02: log into the web UI (default admin/admin), open
+    # "Servers", enable Server #1 with type=RAW on the port below.
     enabled: false
-    address: "192.168.4.1:1457"
+    address: "192.168.1.10:1457"
+
+  # NMEA 0183 over TCP. Use this for the YDNR-02 Server #1 (default port
+  # 1456, data protocol NMEA 0183) — the same one Web Gauges depends on, so
+  # it's typically already enabled. Decodes depth, water/cabin temp, cabin
+  # humidity, heel, position.
+  n0183:
+    enabled: false
+    address: "192.168.1.10:1456"

@@ -15,6 +15,7 @@ import (
 	"github.com/kepsic/hara-marina/marina-bridge/internal/marina"
 	"github.com/kepsic/hara-marina/marina-bridge/internal/sources/cerbo"
 	"github.com/kepsic/hara-marina/marina-bridge/internal/sources/emtrak"
+	"github.com/kepsic/hara-marina/marina-bridge/internal/sources/n0183"
 	"github.com/kepsic/hara-marina/marina-bridge/internal/sources/ydwg"
 	"github.com/kepsic/hara-marina/marina-bridge/internal/telemetry"
 )
@@ -55,6 +56,13 @@ func main() {
 		go func() {
 			if err := ydwg.Run(ctx, cfg.Sources.Ydwg, snap, aisPusher); err != nil {
 				log.Printf("[ydwg] exited: %v", err)
+			}
+		}()
+	}
+	if cfg.Sources.N0183.Enabled {
+		go func() {
+			if err := n0183.Run(ctx, cfg.Sources.N0183, snap); err != nil {
+				log.Printf("[n0183] exited: %v", err)
 			}
 		}()
 	}

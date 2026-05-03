@@ -28,6 +28,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"strconv"
@@ -39,9 +40,22 @@ import (
 	"github.com/kepsic/hara-marina/marina-bridge/internal/config"
 )
 
-// Run dials the em-trak WiFi endpoint and forwards every decoded AIS fix
+// Default USB CDC-ACM device paths the auto-discoverer probes, in order.
+// em-trak transponders enumerate as ttyACM*; older USB-serial bridges as ttyUSB*.
+var defaultSerialProbes = []string{
+	"/dev/ttyACM0",
+	"/dev/ttyACM1",
+	"/dev/ttyUSB0",
+	"/dev/ttyUSB1",
+}
+
+// Run picks a transport based on cfg.Mode and forwards every decoded AIS fix
 // (own-vessel AIVDO and any AIVDM heard from other vessels) to the supplied
 // pusher. Reconnects every 5s on failure. Returns nil when ctx is cancelled.
+//
+// Mode "auto" probes USB serial paths first, then falls back to TCP. The
+// chosen transport is re-evaluated on every reconnect, so unplugging USB
+// transparently switches over to WiFi (and vice-versa).
 func Run(ctx context.Context, cfg config.EmtrakConfig, pusher *aisingest.Pusher) error {
 	if !cfg.Enabled {
 		return nil
@@ -49,19 +63,92 @@ func Run(ctx context.Context, cfg config.EmtrakConfig, pusher *aisingest.Pusher)
 	if pusher == nil {
 		log.Printf("[emtrak] enabled but ais ingest pusher is nil — fixes will be dropped")
 	}
+	mode := cfg.Mode
+	if mode == "" {
+		mode = "auto"
+	}
+	baud := cfg.SerialBaud
+	if baud == 0 {
+		baud = 38400
+	}
 	for {
 		if ctx.Err() != nil {
 			return nil
 		}
-		if err := runOnce(ctx, cfg.Address, pusher); err != nil {
+		var err error
+		switch mode {
+		case "tcp":
+			err = runOnce(ctx, cfg.Address, pusher)
+		case "serial":
+			err = runSerial(ctx, cfg.SerialDevice, baud, pusher)
+		default: // auto
+			err = runAuto(ctx, cfg, baud, pusher)
+		}
+		if err != nil {
 			log.Printf("[emtrak] %v — reconnecting in 5s", err)
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-time.After(5 * time.Second):
-			}
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(5 * time.Second):
 		}
 	}
+}
+
+// runAuto probes serial paths in order; first one that opens wins. If none
+// open, falls back to TCP. Each call returns when the chosen transport
+// disconnects, so the outer loop will probe again on the next iteration.
+func runAuto(ctx context.Context, cfg config.EmtrakConfig, baud int, pusher *aisingest.Pusher) error {
+	probes := defaultSerialProbes
+	if cfg.SerialDevice != "" {
+		probes = []string{cfg.SerialDevice}
+	}
+	for _, dev := range probes {
+		rc, err := openSerial(dev, baud)
+		if err != nil {
+			continue
+		}
+		log.Printf("[emtrak] connected via serial %s @ %d baud", dev, baud)
+		go func() { <-ctx.Done(); rc.Close() }()
+		err = runReader(ctx, rc, pusher)
+		rc.Close()
+		if err != nil {
+			return fmt.Errorf("serial %s: %w", dev, err)
+		}
+		return nil
+	}
+	if cfg.Address == "" {
+		return fmt.Errorf("no serial device found and no TCP address configured")
+	}
+	return runOnce(ctx, cfg.Address, pusher)
+}
+
+// runSerial opens an explicit serial device (or auto-discovers if path empty).
+func runSerial(ctx context.Context, device string, baud int, pusher *aisingest.Pusher) error {
+	probes := []string{device}
+	if device == "" {
+		probes = defaultSerialProbes
+	}
+	var lastErr error
+	for _, dev := range probes {
+		rc, err := openSerial(dev, baud)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		log.Printf("[emtrak] connected via serial %s @ %d baud", dev, baud)
+		go func() { <-ctx.Done(); rc.Close() }()
+		err = runReader(ctx, rc, pusher)
+		rc.Close()
+		if err != nil {
+			return fmt.Errorf("serial %s: %w", dev, err)
+		}
+		return nil
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no serial device opened")
+	}
+	return lastErr
 }
 
 func runOnce(ctx context.Context, addr string, pusher *aisingest.Pusher) error {
@@ -71,14 +158,20 @@ func runOnce(ctx context.Context, addr string, pusher *aisingest.Pusher) error {
 		return fmt.Errorf("dial %s: %w", addr, err)
 	}
 	defer conn.Close()
-	log.Printf("[emtrak] connected to %s", addr)
+	log.Printf("[emtrak] connected via TCP %s", addr)
 
 	go func() { <-ctx.Done(); conn.Close() }()
 
+	return runReader(ctx, conn, pusher)
+}
+
+// runReader consumes NMEA 0183 lines from any io.Reader and pushes decoded
+// AIS fixes to the supplied pusher. Used by both the TCP and serial backends.
+func runReader(ctx context.Context, r io.Reader, pusher *aisingest.Pusher) error {
 	asm := newAssembler()
 	names := newNameCache()
 
-	sc := bufio.NewScanner(conn)
+	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 1024), 64*1024)
 	for sc.Scan() {
 		processLine(ctx, sc.Text(), asm, names, pusher)

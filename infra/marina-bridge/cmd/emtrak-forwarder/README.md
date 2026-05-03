@@ -42,11 +42,33 @@ All via environment variables (or the corresponding flags):
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `EMTRAK_ADDRESS` | `192.168.1.1:39150` | em-trak WiFi NMEA TCP endpoint |
+| `EMTRAK_MODE` | `auto` | Transport: `auto` \| `serial` \| `tcp` |
+| `EMTRAK_ADDRESS` | `192.168.1.1:39150` | em-trak WiFi NMEA TCP endpoint (used in `tcp` and `auto` mode) |
+| `EMTRAK_SERIAL_DEVICE` | _(empty)_ | Explicit serial path; empty = autodiscover `/dev/ttyACM*`, `/dev/ttyUSB*` |
+| `EMTRAK_SERIAL_BAUD` | `38400` | Serial baud rate (em-trak USB-B is 38400 8N1) |
 | `AIS_INGEST_URL` | _(required)_ | ais-cache base URL |
 | `AIS_INGEST_TOKEN` | _(required)_ | bearer token |
 | `AIS_INGEST_MMSI` | _(required)_ | own-vessel MMSI fallback |
 | `AIS_INGEST_NAME` | _(empty)_ | friendly name forwarded to cache |
+
+### Transport autodiscovery
+
+In the default `auto` mode the forwarder probes, in order:
+
+1. `/dev/ttyACM0`, `/dev/ttyACM1`, `/dev/ttyUSB0`, `/dev/ttyUSB1` — em-trak's USB-B port (CDC-ACM, 38400 baud)
+2. TCP `EMTRAK_ADDRESS` (default `192.168.1.1:39150`) — em-trak's WiFi access point
+
+Whichever opens first wins. On disconnect the probe re-runs, so you can
+pull the USB cable and the forwarder transparently switches to WiFi
+(and vice-versa) without restarting.
+
+This means **the same binary works** whether the boat owner:
+
+- plugs em-trak into the Cerbo via USB,
+- adds a WiFi dongle and joins `em-trak-XXXX`, or
+- runs a travel router so em-trak shows up on the boat LAN.
+
+Force a single transport with `EMTRAK_MODE=serial` or `EMTRAK_MODE=tcp`.
 
 ## What gets forwarded
 

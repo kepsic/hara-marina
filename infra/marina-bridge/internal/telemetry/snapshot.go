@@ -19,6 +19,7 @@ type Snapshot struct {
 	CabinTempC       *float64
 	CabinHumidityPct *float64
 	HeelDeg          *float64
+	WaterDepthM      *float64
 	Lat              *float64
 	Lon              *float64
 
@@ -35,6 +36,7 @@ func (s *Snapshot) SetBilgePump24h(v float64)     { s.set(func() { s.BilgePump24
 func (s *Snapshot) SetCabinTempC(v float64)       { s.set(func() { s.CabinTempC = &v }) }
 func (s *Snapshot) SetCabinHumidityPct(v float64) { s.set(func() { s.CabinHumidityPct = &v }) }
 func (s *Snapshot) SetHeelDeg(v float64)          { s.set(func() { s.HeelDeg = &v }) }
+func (s *Snapshot) SetWaterDepthM(v float64)      { s.set(func() { s.WaterDepthM = &v }) }
 func (s *Snapshot) SetPosition(lat, lon float64)  { s.set(func() { s.Lat = &lat; s.Lon = &lon }) }
 
 func (s *Snapshot) set(fn func()) {
@@ -87,6 +89,9 @@ func (s *Snapshot) MarshalIngest(slug string) map[string]any {
 	}
 	if s.HeelDeg != nil {
 		out["heel_deg"] = *s.HeelDeg
+	}
+	if s.WaterDepthM != nil {
+		out["water_depth_m"] = *s.WaterDepthM
 	}
 	if s.Lat != nil && s.Lon != nil {
 		out["position"] = map[string]any{"lat": *s.Lat, "lon": *s.Lon}

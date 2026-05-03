@@ -43,8 +43,20 @@ func envBool(k string, def bool) bool {
 	return def
 }
 
+func envInt(k string, def int) int {
+	if v := os.Getenv(k); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return def
+}
+
 func main() {
-	addr := flag.String("emtrak", envOr("EMTRAK_ADDRESS", "192.168.1.1:39150"), "em-trak WiFi NMEA TCP host:port")
+	mode := flag.String("mode", envOr("EMTRAK_MODE", "auto"), "transport: auto|serial|tcp")
+	addr := flag.String("emtrak", envOr("EMTRAK_ADDRESS", "192.168.1.1:39150"), "em-trak WiFi NMEA TCP host:port (used for tcp/auto)")
+	serialDev := flag.String("serial-device", envOr("EMTRAK_SERIAL_DEVICE", ""), "explicit serial device path (empty = autodiscover /dev/ttyACM*)")
+	serialBaud := flag.Int("serial-baud", envInt("EMTRAK_SERIAL_BAUD", 38400), "serial baud rate")
 	url := flag.String("ingest-url", envOr("AIS_INGEST_URL", ""), "ais-cache base URL (https://...)")
 	token := flag.String("ingest-token", envOr("AIS_INGEST_TOKEN", ""), "ais-cache bearer token")
 	mmsi := flag.String("mmsi", envOr("AIS_INGEST_MMSI", ""), "fallback MMSI for own-vessel fixes")
@@ -54,8 +66,13 @@ func main() {
 	if *url == "" {
 		log.Fatal("AIS_INGEST_URL (or -ingest-url) is required")
 	}
-	if *addr == "" {
-		log.Fatal("EMTRAK_ADDRESS (or -emtrak) is required")
+	switch *mode {
+	case "auto", "serial", "tcp":
+	default:
+		log.Fatalf("-mode must be auto, serial or tcp (got %q)", *mode)
+	}
+	if *mode == "tcp" && *addr == "" {
+		log.Fatal("-emtrak / EMTRAK_ADDRESS required in tcp mode")
 	}
 
 	pusher := aisingest.NewPusher(config.AisIngestConfig{
@@ -70,12 +87,15 @@ func main() {
 	}
 
 	emCfg := config.EmtrakConfig{
-		Enabled: envBool("EMTRAK_ENABLED", true),
-		Address: *addr,
+		Enabled:      envBool("EMTRAK_ENABLED", true),
+		Mode:         *mode,
+		Address:      *addr,
+		SerialDevice: *serialDev,
+		SerialBaud:   *serialBaud,
 	}
 
-	log.Printf("[emtrak-fwd] starting; emtrak=%s ingest=%s mmsi=%s name=%s",
-		emCfg.Address, *url, *mmsi, *name)
+	log.Printf("[emtrak-fwd] starting; mode=%s tcp=%s serial=%s baud=%d ingest=%s mmsi=%s name=%s",
+		emCfg.Mode, emCfg.Address, emCfg.SerialDevice, emCfg.SerialBaud, *url, *mmsi, *name)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()

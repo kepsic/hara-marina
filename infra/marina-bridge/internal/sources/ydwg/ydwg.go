@@ -200,7 +200,8 @@ func handleAttitude(d []byte, snap *telemetry.Snapshot) {
 	snap.SetHeelDeg(float64(roll) * 0.0001 * radToDeg)
 }
 
-// PGN 128267: Water Depth — depth in 0.01 m (uint32 LE) at offset 1
+// PGN 128267: Water Depth — depth in 0.01 m (uint32 LE) at offset 1.
+// d[5..6] is the int16 transducer offset (signed, 0.001 m); ignored here.
 func handleWaterDepth(d []byte, snap *telemetry.Snapshot) {
 	if len(d) < 5 {
 		return
@@ -209,9 +210,7 @@ func handleWaterDepth(d []byte, snap *telemetry.Snapshot) {
 	if raw == 0xFFFFFFFF {
 		return
 	}
-	// We don't have a "water depth" field on the marina schema yet — fold it
-	// into bilge.water_cm if no other source provides it. (Placeholder.)
-	_ = raw
+	snap.SetWaterDepthM(float64(raw) * 0.01)
 }
 
 // PGN 129025: Position, Rapid Update — lat/lon as int32 LE in 1e-7 deg
