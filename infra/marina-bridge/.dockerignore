@@ -1,3 +1,4 @@
-/marina-bridge
+# exclude only the locally-built binary at the repo root, not cmd/marina-bridge/
+marina-bridge.bin
 config.yaml
 *.log
