@@ -13,6 +13,7 @@
 // Supported PGNs:
 //
 //	127508 DC Battery Status              (voltage)
+	//	127501 Binary Switch Bank Status      (relay/switch states)
 //	127250 Vessel Heading                  (heading)
 //	127257 Attitude                        (heel, pitch)
 //	128259 Speed, Water Referenced         (boat speed)
@@ -222,8 +223,13 @@ func parseLine(ctx context.Context, line string, snap *telemetry.Snapshot, reasm
 	case 60928, 126993:
 		// Address Claim / Heartbeat: protocol-level messages, not telemetry.
 		return
+	case 126996, 126720, 65284:
+		// Product information / proprietary transport, not mapped to telemetry fields.
+		return
 	case 127508:
 		handleBattery(data, snap)
+	case 127501:
+		handleBinarySwitchBankStatus(data, snap)
 	case 127250:
 		handleHeading(data, snap)
 	case 127257:
@@ -248,6 +254,10 @@ func parseLine(ctx context.Context, line string, snap *telemetry.Snapshot, reasm
 		handleHumidity130313(data, snap)
 	case 130314:
 		handlePressure130314(data, snap)
+	case 130316:
+		// Extended range temperature; many devices emit unavailable (FF) payloads.
+		// Keep as known-but-not-mapped to avoid noisy "unhandled" logs.
+		return
 	default:
 		if _, loaded := seenUnhandledPGN.LoadOrStore(fmt.Sprintf("single:%d", pgn), struct{}{}); !loaded {
 			log.Printf("[ydwg] unhandled single-frame PGN=%d len=%d data=% X", pgn, len(data), data)
@@ -313,6 +323,25 @@ func handleBattery(d []byte, snap *telemetry.Snapshot) {
 		return
 	}
 	snap.SetBatteryVoltage(float64(raw) * 0.01)
+}
+
+// PGN 127501: Binary Switch Bank Status.
+// d[0]=instance, d[1]=bank, d[2..] packed 2-bit states per channel:
+// 0=Off, 1=On, 2=Error, 3=Unavailable.
+func handleBinarySwitchBankStatus(d []byte, snap *telemetry.Snapshot) {
+	if len(d) < 3 {
+		return
+	}
+	stateByte := d[2]
+	for ch := 1; ch <= 4; ch++ {
+		state := (stateByte >> ((ch - 1) * 2)) & 0x03
+		switch state {
+		case 0:
+			snap.SetRelayBank1(ch, false)
+		case 1:
+			snap.SetRelayBank1(ch, true)
+		}
+	}
 }
 
 // PGN 127257: Attitude — yaw/pitch/roll in 0.0001 rad (int16 LE)
