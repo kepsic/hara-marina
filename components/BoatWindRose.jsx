@@ -200,13 +200,13 @@ export default function BoatWindRose({
       {/* Boat shape at center — pointing north */}
       <g>
         {/* Outer hull — white */}
-        <path d={`M ${c - 6},${c + 8} L ${c},${c - 14} L ${c + 6},${c + 8} Q ${c + 5},${c + 10} ${c},${c + 12} Q ${c - 5},${c + 10} ${c - 6},${c + 8} Z`}
-          fill="rgba(232,244,248,0.9)" stroke="#7eabc8" strokeWidth="1.2"/>
+        <path d={`M ${c - 12},${c + 16} L ${c},${c - 22} L ${c + 12},${c + 16} Q ${c + 10},${c + 20} ${c},${c + 24} Q ${c - 10},${c + 20} ${c - 12},${c + 16} Z`}
+          fill="rgba(232,244,248,0.92)" stroke="#7eabc8" strokeWidth="1.5"/>
         {/* Cabin/cockpit area — darker center */}
-        <circle cx={c} cy={c} r="5" fill="rgba(100,140,160,0.6)" stroke="#7eabc8" strokeWidth="0.8"/>
+        <circle cx={c} cy={c + 2} r="8" fill="rgba(100,140,160,0.65)" stroke="#7eabc8" strokeWidth="1"/>
         {/* Keel line */}
-        <line x1={c} y1={c + 8} x2={c} y2={c + 14}
-          stroke="#7eabc8" strokeWidth="1" opacity="0.7"/>
+        <line x1={c} y1={c + 16} x2={c} y2={c + 26}
+          stroke="#7eabc8" strokeWidth="1.2" opacity="0.8"/>
       </g>
 
       {/* Centre readout */}
