@@ -80,7 +80,17 @@ export default function BoatPage({ initialBoat, viewerEmail }) {
         const r = await fetch(`/api/telemetry/${slug}`);
         if (!r.ok) return;
         const j = await r.json();
-        if (alive && !j.error) setTel(j);
+        if (alive && !j.error) {
+          setTel(prev => ({
+            ...prev,
+            ...j,
+            battery: { ...prev.battery, ...(j.battery || {}) },
+            bilge:   { ...prev.bilge,   ...(j.bilge   || {}) },
+            cabin:   { ...prev.cabin,   ...(j.cabin   || {}) },
+            position:{ ...prev.position,...(j.position|| {}) },
+            wind:    { ...prev.wind,    ...(j.wind    || {}) },
+          }));
+        }
       } catch {}
     }
     load();
