@@ -816,16 +816,17 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
             <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
               {[1,2,3,4].map((n) => {
                 const key = `relay${n}`;
+                const known = relays[key] === true || relays[key] === false;
                 const on = relays[key] === true;
                 return (
                   <button key={n} disabled={relayBusy === n} onClick={() => setRelay(n, !on)}
                     style={{
                       padding:"10px 16px",cursor:"pointer",borderRadius:6,border:"1px solid rgba(126,171,200,0.3)",
-                      background:on?"rgba(42,154,74,0.35)":"rgba(255,255,255,0.06)",
-                      color:on?"#9eddb0":"#9ec8e0",fontSize:13,letterSpacing:1,
+                      background:on?"rgba(42,154,74,0.35)":(known?"rgba(255,255,255,0.06)":"rgba(120,120,120,0.12)"),
+                      color:on?"#9eddb0":(known?"#9ec8e0":"#7f95a5"),fontSize:13,letterSpacing:1,
                       boxShadow: on ? "0 0 8px rgba(42,154,74,0.3)" : "none",
                     }}>
-                    R{n} {relayBusy === n ? "…" : (on ? "● ON" : "○ OFF")}
+                    R{n} {relayBusy === n ? "…" : (known ? (on ? "● ON" : "○ OFF") : "◌ N/A")}
                   </button>
                 );
               })}
