@@ -1,0 +1,9 @@
+# Build artefacts
+ais-cache
+*.test
+*.out
+
+# Local dev
+.env
+.env.*
+ais_probe.mjs

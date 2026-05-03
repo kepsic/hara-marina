@@ -1,6 +1,6 @@
 import { verifySession, SESSION_COOKIE_NAME } from "../../../lib/auth";
 import { canViewBoat } from "../../../lib/owners";
-import { getCachedSnapshot } from "../../../lib/aisStream";
+import { fetchSnapshot, isConfigured as cacheConfigured } from "../../../lib/aisCacheClient";
 import { classifyMarinaState, MARINA } from "../../../lib/marina";
 import { Redis } from "@upstash/redis";
 
@@ -35,8 +35,8 @@ export default async function handler(req, res) {
   }
   res.setHeader("Cache-Control", "private, no-store");
 
-  if (!process.env.AISSTREAM_API_KEY) {
-    return res.status(200).json({ configured: false, reason: "AISSTREAM_API_KEY not set" });
+  if (!cacheConfigured()) {
+    return res.status(200).json({ configured: false, reason: "AIS_CACHE_URL not set" });
   }
 
   const mmsi = await lookupMmsi(slug);
@@ -44,7 +44,7 @@ export default async function handler(req, res) {
     return res.status(200).json({ configured: false, reason: "boat has no mmsi" });
   }
 
-  const snap = await getCachedSnapshot(mmsi);
+  const snap = await fetchSnapshot(mmsi);
   if (!snap || !Number.isFinite(snap.lat)) {
     return res.status(200).json({
       configured: true,
@@ -56,7 +56,7 @@ export default async function handler(req, res) {
     });
   }
 
-  const cls = classifyMarinaState(snap);
+  const cls = classifyMarinaState({ lat: snap.lat, lon: snap.lon, sog: snap.sog });
   return res.status(200).json({
     configured: true,
     mmsi,
@@ -68,6 +68,7 @@ export default async function handler(req, res) {
     cog: snap.cog,
     heading: snap.heading,
     navStatus: snap.navStatus,
+    destination: snap.destination,
     ts: snap.ts,
     lastSeenMs: Date.now() - snap.ts,
     ...cls,
