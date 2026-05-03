@@ -9,3 +9,5 @@ node_modules/
 
 .playwright-mcp/
 infra/ais-cache/ais-cache
+infra/marina-bridge/cmd/emtrak-forwarder/emtrak-forwarder
+infra/marina-bridge/cmd/emtrak-forwarder/emtrak-forwarder-*
