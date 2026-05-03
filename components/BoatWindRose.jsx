@@ -198,7 +198,7 @@ export default function BoatWindRose({
       {bowMarker()}
 
       {/* Boat shape at center — compact, bow-up */}
-      <g transform={`translate(${c} ${c + 6}) rotate(-90) scale(0.26)`} opacity="0.78">
+      <g transform={`translate(${c} ${c + 6}) rotate(-90) scale(0.42)`} opacity="0.78">
         {/* Hull silhouette reused from header geometry (normalized around center) */}
         <path d="M -35 0 C -35 0 -23 -12 9 -12 L 33 -6 L 35 0 L 33 6 L 9 12 C -23 12 -35 0 -35 0 Z"
           fill="rgba(100,160,120,0.8)" stroke="rgba(186,216,196,0.85)" strokeWidth="1.5"/>
