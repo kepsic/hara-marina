@@ -94,6 +94,7 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
   const [tel, setTel] = useState(() => makeTelemetry(initialBoat));
   const [weather, setWeather] = useState(null);
   const [ais, setAis] = useState(null);
+  const [activeTab, setActiveTab] = useState("overview");
   const [pinInput, setPinInput] = useState("");
   const [pinBusy, setPinBusy] = useState(false);
   const [pinErr, setPinErr] = useState("");
@@ -105,6 +106,18 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
   const [shareMsg, setShareMsg] = useState("");
   const [shareData, setShareData] = useState(null);
   const [shareTtlMin, setShareTtlMin] = useState(120);
+  const [relayBusy, setRelayBusy] = useState(0);
+  const [relayMsg, setRelayMsg] = useState("");
+  const [ruleEnabled, setRuleEnabled] = useState(false);
+  const [ruleRelay, setRuleRelay] = useState(1);
+  const [ruleOnAbove, setRuleOnAbove] = useState(80);
+  const [ruleOffBelow, setRuleOffBelow] = useState(75);
+  const [ruleBusy, setRuleBusy] = useState(false);
+  const [ruleMsg, setRuleMsg] = useState("");
+  const [scenarios, setScenarios] = useState([]);
+  const [scenariosBusy, setScenariosBusy] = useState(false);
+  const [scenariosMsg, setScenariosMsg] = useState("");
+  const [editingScenario, setEditingScenario] = useState(null); // null = not editing
 
   // Pull live boat overrides (in case it was edited via the marina UI)
   useEffect(() => {
@@ -193,12 +206,116 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
     return () => { alive = false; };
   }, [accessKind, slug]);
 
+  useEffect(() => {
+    if (accessKind !== "owner") return;
+    let alive = true;
+    async function loadScenarios() {
+      try {
+        const r = await fetch(`/api/relays/${slug}/scenarios`);
+        if (!r.ok) return;
+        const j = await r.json();
+        if (alive && Array.isArray(j.scenarios)) setScenarios(j.scenarios);
+      } catch {}
+    }
+    loadScenarios();
+    return () => { alive = false; };
+  }, [accessKind, slug]);
+
+  async function saveScenarios(updated) {
+    setScenariosBusy(true);
+    setScenariosMsg("");
+    try {
+      const r = await fetch(`/api/relays/${slug}/scenarios`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scenarios: updated }),
+      });
+      const j = await r.json();
+      if (!r.ok) {
+        setScenariosMsg(j.error || "save failed");
+      } else {
+        setScenarios(j.scenarios);
+        setScenariosMsg("Scenarios saved and sent to bridge");
+        setEditingScenario(null);
+      }
+    } catch {
+      setScenariosMsg("network error");
+    } finally {
+      setScenariosBusy(false);
+    }
+  }
+
   const lastSeen = tel.last_seen_ago < 60
     ? `${tel.last_seen_ago}s ago`
     : `${Math.round(tel.last_seen_ago / 60)} min ago`;
   const fresh = tel.last_seen_ago < 120;
   const isDemo = tel.source === "demo";
   const isOwnerView = accessKind === "owner";
+  const hasBilgeWater = isNum(tel.bilge?.water_cm);
+  const hasBilgePump = isNum(tel.bilge?.pump_cycles_24h);
+  const posLat = isNum(tel.position?.lat) ? tel.position.lat : (isNum(ais?.lat) ? ais.lat : null);
+  const posLon = isNum(tel.position?.lon) ? tel.position.lon : (isNum(ais?.lon) ? ais.lon : null);
+  const posSource = isNum(tel.position?.lat) && isNum(tel.position?.lon) ? "Onboard GPS" : (isNum(ais?.lat) && isNum(ais?.lon) ? "AIS fallback" : null);
+  const relays = tel?.relays?.bank1 || {};
+
+  async function setRelay(relay, state) {
+    setRelayBusy(relay);
+    setRelayMsg("");
+    try {
+      const r = await fetch(`/api/relays/${slug}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ relay, state }),
+      });
+      const j = await r.json();
+      if (!r.ok) {
+        setRelayMsg(j.error || "relay command failed");
+      } else {
+        setRelayMsg(`Relay ${relay} -> ${state ? "ON" : "OFF"}`);
+        setTel((prev) => ({
+          ...(prev || {}),
+          relays: {
+            ...(prev?.relays || {}),
+            bank1: {
+              ...(prev?.relays?.bank1 || {}),
+              [`relay${relay}`]: state,
+            },
+          },
+        }));
+      }
+    } catch {
+      setRelayMsg("network error");
+    } finally {
+      setRelayBusy(0);
+    }
+  }
+
+  async function saveHumidityRule() {
+    setRuleBusy(true);
+    setRuleMsg("");
+    try {
+      const r = await fetch(`/api/relays/${slug}/humidity-rule`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enabled: ruleEnabled,
+          relay: ruleRelay,
+          onAbove: Number(ruleOnAbove),
+          offBelow: Number(ruleOffBelow),
+        }),
+      });
+      const j = await r.json();
+      if (!r.ok) {
+        setRuleMsg(j.error || "rule save failed");
+      } else {
+        setRuleMsg("Humidity rule sent to boat bridge");
+      }
+    } catch {
+      setRuleMsg("network error");
+    } finally {
+      setRuleBusy(false);
+    }
+  }
 
   async function submitPin(e) {
     e.preventDefault();
@@ -407,6 +524,32 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
           </div>
         </div>
 
+        {/* Tab bar */}
+        <div style={{
+          maxWidth:980, margin:"0 auto", padding:"0 20px",
+          display:"flex", gap:0, borderBottom:"1px solid rgba(126,171,200,0.15)",
+        }}>
+          {[
+            { key:"overview", label:"Overview" },
+            { key:"telemetry", label:"Telemetry" },
+            ...(isOwnerView ? [{ key:"relay", label:"⚡ Relay & Scenarios" }] : []),
+          ].map((tab) => (
+            <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+              style={{
+                padding:"10px 18px", cursor:"pointer", border:"none",
+                background:"transparent", fontFamily:"inherit",
+                fontSize:11, letterSpacing:2, textTransform:"uppercase",
+                color: activeTab === tab.key ? "#f0c040" : "#7eabc8",
+                borderBottom: activeTab === tab.key ? "2px solid #f0c040" : "2px solid transparent",
+                marginBottom:-1,
+              }}>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* ---- Overview tab ---- */}
+        {activeTab === "overview" && (<>
         {isOwnerView && (
           <Section title="🔐 Access & Sharing">
             <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
@@ -494,55 +637,6 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
           </Section>
         )}
 
-        {/* Telemetry section */}
-        <Section title="🛰 Telemetry" badge={isDemo ? "DEMO" : null}>
-          <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
-            <Stat label="Battery" value={fmt(tel.battery?.voltage, 2)} unit="V"
-              color={isNum(tel.battery?.voltage) && tel.battery.voltage < 12.0 ? "#e08040" : "#2a9a4a"} big/>
-            <Stat label="Battery charge" value={isNum(tel.battery?.percent) ? Math.round(tel.battery.percent) : null} unit="%"
-              color={isNum(tel.battery?.percent) && tel.battery.percent < 30 ? "#e08040" : "#9ec8e0"}/>
-            <Stat label="Shore power" value={typeof tel.shore_power === "boolean" ? (tel.shore_power ? "Connected" : "Disconnected") : null} unit=""
-              color={tel.shore_power ? "#2a9a4a" : "#a08040"}/>
-            <Stat label="Bilge water" value={fmt(tel.bilge?.water_cm, 1)} unit="cm"
-              color={isNum(tel.bilge?.water_cm) && tel.bilge.water_cm > 4 ? "#e08040" : "#6ab0e8"}/>
-            <Stat label="Bilge pump 24h" value={isNum(tel.bilge?.pump_cycles_24h) ? tel.bilge.pump_cycles_24h : null} unit="cycles"/>
-            <Stat label="Cabin temp" value={fmt(tel.cabin?.temperature_c, 1)} unit="°C" color="#f0c040"/>
-            <Stat label="Cabin humidity" value={isNum(tel.cabin?.humidity_pct) ? Math.round(tel.cabin.humidity_pct) : null} unit="%"/>
-            <Stat label="Heel" value={fmt(tel.heel_deg, 1)} unit="°"
-              color={isNum(tel.heel_deg) && Math.abs(tel.heel_deg) > 3 ? "#e08040" : "#9ec8e0"}/>
-            <Stat label="Pitch" value={fmt(tel.pitch_deg, 1)} unit="°"/>
-            <Stat label="Water depth" value={fmt(tel.water_depth_m, 1)} unit="m" color="#6ab0e8"/>
-            <Stat label="Sea temp" value={fmt(tel.water_temp_c, 1)} unit="°C" color="#6ab0e8"/>
-            <Stat label="Boat speed" value={fmt(tel.boat_speed_kn, 1)} unit="kn"/>
-            <Stat label="SOG" value={fmt(tel.sog_kn ?? ais?.sog, 1)} unit="kn"/>
-            <Stat label="Heading" value={isNum(tel.heading_deg) ? `${Math.round(tel.heading_deg)}°` : (isNum(ais?.heading) ? `${Math.round(ais.heading)}°` : null)} unit=""/>
-            <Stat label="Log total" value={fmt(tel.log_total_nm, 1)} unit="NM"/>
-          </div>
-
-          <div style={{marginTop:14,display:"flex",flexWrap:"wrap",gap:12}}>
-            <div style={{
-              flex:"1 1 240px",background:"linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
-              border:"1px solid rgba(126,171,200,0.18)",borderRadius:8,padding:"12px 14px",
-            }}>
-              <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:6}}>Position</div>
-              {isNum(tel.position?.lat) && isNum(tel.position?.lon) ? (
-                <>
-                  <div style={{fontFamily:"monospace",fontSize:13,color:"#e8f4f8"}}>
-                    {tel.position.lat.toFixed(5)}° N, {tel.position.lon.toFixed(5)}° E
-                  </div>
-                  <a href={`https://www.openstreetmap.org/?mlat=${tel.position.lat}&mlon=${tel.position.lon}#map=17/${tel.position.lat}/${tel.position.lon}`}
-                     target="_blank" rel="noreferrer"
-                     style={{fontSize:10,color:"#6ab0e8",letterSpacing:1,textDecoration:"none",marginTop:6,display:"inline-block"}}>
-                    Open in map ↗
-                  </a>
-                </>
-              ) : (
-                <div style={{fontSize:11,color:"#5a8aaa"}}>— no GPS fix</div>
-              )}
-            </div>
-          </div>
-        </Section>
-
         {/* Wind — from boat sensors when available, falls back to weather station */}
         <BoatWindSection tel={tel} ais={ais} weather={weather} isDemo={isDemo} />
 
@@ -603,12 +697,308 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
         <Section title="📷 Photos">
           <BoatPhotos slug={slug} color={boat.color} />
         </Section>
+        </>)}
+
+        {/* ---- Telemetry tab ---- */}
+        {activeTab === "telemetry" && (<>
+        <Section title="🛰 Telemetry" badge={isDemo ? "DEMO" : null}>
+          <TelemetryGroup title="Electrical">
+            <Stat label="Battery" value={fmt(tel.battery?.voltage, 2)} unit="V"
+              color={isNum(tel.battery?.voltage) && tel.battery.voltage < 12.0 ? "#e08040" : "#2a9a4a"} big/>
+            <Stat label="Battery charge" value={isNum(tel.battery?.percent) ? Math.round(tel.battery.percent) : null} unit="%"
+              color={isNum(tel.battery?.percent) && tel.battery.percent < 30 ? "#e08040" : "#9ec8e0"}/>
+            <Stat label="Shore power" value={typeof tel.shore_power === "boolean" ? (tel.shore_power ? "Connected" : "Disconnected") : null} unit=""
+              color={tel.shore_power ? "#2a9a4a" : "#a08040"}/>
+          </TelemetryGroup>
+
+          <TelemetryGroup title="AC & Energy" style={{marginTop:12}}>
+            <Stat label="AC voltage" value={fmt(tel.ac?.voltage_v, 1)} unit="V" color="#f0c040"/>
+            <Stat label="AC current" value={fmt(tel.ac?.current_a, 1)} unit="A" color="#f0c040"/>
+            <Stat label="AC power" value={isNum(tel.ac?.power_w) ? Math.round(tel.ac.power_w) : null} unit="W" color="#f0c040"/>
+            <Stat label="kWh total" value={fmt(tel.ac?.energy_kwh_total, 2)} unit="kWh" color="#f0c040"/>
+            <Stat label="kWh day" value={fmt(tel.ac?.energy_kwh_day, 2)} unit="kWh"/>
+            <Stat label="kWh month" value={fmt(tel.ac?.energy_kwh_month, 2)} unit="kWh"/>
+            <Stat label="kWh year" value={fmt(tel.ac?.energy_kwh_year, 2)} unit="kWh"/>
+          </TelemetryGroup>
+
+          <TelemetryGroup title="Climate" style={{marginTop:12}}>
+            <Stat label="Cabin temp" value={fmt(tel.cabin?.temperature_c, 1)} unit="°C" color="#f0c040"/>
+            <Stat label="Cabin humidity" value={isNum(tel.cabin?.humidity_pct) ? Math.round(tel.cabin.humidity_pct) : null} unit="%"/>
+            <Stat label="Dew point" value={fmt(tel.dewpoint_c, 1)} unit="°C" color="#9ec8e0"/>
+            <Stat label="Sea temp" value={fmt(tel.water_temp_c, 1)} unit="°C" color="#6ab0e8"/>
+          </TelemetryGroup>
+
+          <TelemetryGroup title="Motion & Navigation" style={{marginTop:12}}>
+            <Stat label="Heel" value={fmt(tel.heel_deg, 1)} unit="°"
+              color={isNum(tel.heel_deg) && Math.abs(tel.heel_deg) > 3 ? "#e08040" : "#9ec8e0"}/>
+            <Stat label="Trim" value={fmt(tel.pitch_deg, 1)} unit="°"/>
+            <Stat label="Boat speed" value={fmt(tel.boat_speed_kn, 1)} unit="kn"/>
+            <Stat label="SOG" value={fmt(tel.sog_kn ?? ais?.sog, 1)} unit="kn"/>
+            <Stat label="Heading" value={isNum(tel.heading_deg) ? `${Math.round(tel.heading_deg)}°` : (isNum(ais?.heading) ? `${Math.round(ais.heading)}°` : null)} unit=""/>
+            <Stat label="Log (MFD)" value={fmt(tel.log_total_nm, 1)} unit="NM"/>
+          </TelemetryGroup>
+
+          <TelemetryGroup title="Water & Bilge" style={{marginTop:12}}>
+            <Stat label="Water depth" value={fmt(tel.water_depth_m, 1)} unit="m" color="#6ab0e8"/>
+            {hasBilgeWater && (
+              <Stat label="Bilge water" value={fmt(tel.bilge?.water_cm, 1)} unit="cm"
+                color={tel.bilge.water_cm > 4 ? "#e08040" : "#6ab0e8"}/>
+            )}
+            {hasBilgePump && (
+              <Stat label="Bilge pump 24h" value={tel.bilge.pump_cycles_24h} unit="cycles"/>
+            )}
+          </TelemetryGroup>
+
+          <div style={{marginTop:12,display:"flex",flexWrap:"wrap",gap:12}}>
+            <div style={{
+              flex:"1 1 240px",background:"linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
+              border:"1px solid rgba(126,171,200,0.18)",borderRadius:8,padding:"12px 14px",
+            }}>
+              <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:6}}>Position</div>
+              {isNum(posLat) && isNum(posLon) ? (
+                <>
+                  <div style={{fontFamily:"monospace",fontSize:13,color:"#e8f4f8"}}>
+                    {posLat.toFixed(5)}° N, {posLon.toFixed(5)}° E
+                  </div>
+                  <a href={`https://www.openstreetmap.org/?mlat=${posLat}&mlon=${posLon}#map=17/${posLat}/${posLon}`}
+                     target="_blank" rel="noreferrer"
+                     style={{fontSize:10,color:"#6ab0e8",letterSpacing:1,textDecoration:"none",marginTop:6,display:"inline-block"}}>
+                    Open in map ↗
+                  </a>
+                  {posSource && <div style={{fontSize:10,color:"#5a8aaa",marginTop:6}}>{posSource}</div>}
+                </>
+              ) : (
+                <div style={{fontSize:11,color:"#5a8aaa"}}>— no GPS fix</div>
+              )}
+            </div>
+          </div>
+        </Section>
+        </>)}
+
+        {/* ---- Relay & Scenarios tab ---- */}
+        {activeTab === "relay" && isOwnerView && (<>
+        <Section title="⚡ Relay & Scenarios">
+          {/* Manual relay toggles */}
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:8}}>Manual Control · Bank 1</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+              {[1,2,3,4].map((n) => {
+                const key = `relay${n}`;
+                const on = relays[key] === true;
+                return (
+                  <button key={n} disabled={relayBusy === n} onClick={() => setRelay(n, !on)}
+                    style={{
+                      padding:"10px 16px",cursor:"pointer",borderRadius:6,border:"1px solid rgba(126,171,200,0.3)",
+                      background:on?"rgba(42,154,74,0.35)":"rgba(255,255,255,0.06)",
+                      color:on?"#9eddb0":"#9ec8e0",fontSize:13,letterSpacing:1,
+                      boxShadow: on ? "0 0 8px rgba(42,154,74,0.3)" : "none",
+                    }}>
+                    R{n} {relayBusy === n ? "…" : (on ? "● ON" : "○ OFF")}
+                  </button>
+                );
+              })}
+              {relayMsg && <span style={{fontSize:11,color:"#9eddb0",marginLeft:6}}>{relayMsg}</span>}
+            </div>
+          </div>
+
+          {/* Scenarios list */}
+          <div style={{marginTop:8}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+              <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase"}}>
+                Automation Scenarios ({scenarios.length}/20)
+              </div>
+              <button
+                onClick={() => setEditingScenario({ name:"", field:"cabin.humidity_pct", condition:"gt", threshold:80, hysteresis:5, relay:1, action:true, enabled:true })}
+                style={{
+                  padding:"6px 12px",cursor:"pointer",background:"#f0c040",color:"#091820",
+                  border:"none",borderRadius:5,fontSize:11,letterSpacing:1,fontWeight:"bold",
+                }}>
+                + New Scenario
+              </button>
+            </div>
+
+            {scenarios.length === 0 && !editingScenario && (
+              <div style={{
+                background:"linear-gradient(180deg, rgba(13,36,56,0.4), rgba(9,28,44,0.4))",
+                border:"1px dashed rgba(126,171,200,0.2)",borderRadius:8,padding:"24px",
+                textAlign:"center",color:"#5a8aaa",fontSize:12,
+              }}>
+                No automation scenarios yet. Click <strong style={{color:"#f0c040"}}>+ New Scenario</strong> to create one.
+                <div style={{marginTop:8,fontSize:10,lineHeight:1.6}}>
+                  Scenarios let you automatically turn relays ON or OFF based on any live telemetry value.
+                  For example: turn on a dehumidifier when cabin humidity exceeds 80%.
+                </div>
+              </div>
+            )}
+
+            {scenarios.map((s, idx) => (
+              <div key={s.id || idx} style={{
+                background:"linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
+                border:`1px solid ${s.enabled ? "rgba(126,171,200,0.25)" : "rgba(126,171,200,0.1)"}`,
+                borderRadius:8,padding:"12px 14px",marginBottom:8,
+                display:"flex",flexWrap:"wrap",gap:10,alignItems:"center",
+                opacity:s.enabled ? 1 : 0.6,
+              }}>
+                <div style={{flex:"1 1 200px"}}>
+                  <div style={{fontSize:12,fontWeight:"bold",color:"#e8f4f8"}}>{s.name}</div>
+                  <div style={{fontSize:10,color:"#7eabc8",marginTop:3,fontFamily:"monospace"}}>
+                    IF {s.field} {s.condition} {s.threshold} (±{s.hysteresis}) → R{s.relay} {s.action ? "ON" : "OFF"}
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                  <span style={{
+                    fontSize:9,letterSpacing:1,padding:"2px 7px",borderRadius:3,
+                    background:s.enabled?"rgba(42,154,74,0.25)":"rgba(90,90,90,0.3)",
+                    color:s.enabled?"#9eddb0":"#7eabc8",border:"1px solid currentColor",
+                  }}>{s.enabled ? "ACTIVE" : "DISABLED"}</span>
+                  <button onClick={() => setEditingScenario({ ...s, _editIdx: idx })}
+                    style={{padding:"5px 10px",cursor:"pointer",background:"rgba(255,255,255,0.06)",
+                      color:"#9ec8e0",border:"1px solid rgba(126,171,200,0.2)",borderRadius:5,fontSize:11}}>
+                    Edit
+                  </button>
+                  <button onClick={() => { const upd = scenarios.filter((_,i)=>i!==idx); saveScenarios(upd); }}
+                    style={{padding:"5px 10px",cursor:"pointer",background:"rgba(200,80,80,0.15)",
+                      color:"#e08080",border:"1px solid rgba(200,80,80,0.3)",borderRadius:5,fontSize:11}}>
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {/* Scenario editor */}
+            {editingScenario && (
+              <ScenarioEditor
+                value={editingScenario}
+                onChange={setEditingScenario}
+                onSave={(s) => {
+                  let upd;
+                  if (s._editIdx !== undefined) {
+                    upd = scenarios.map((x, i) => i === s._editIdx ? { ...s, _editIdx: undefined } : x);
+                  } else {
+                    upd = [...scenarios, s];
+                  }
+                  saveScenarios(upd);
+                }}
+                onCancel={() => setEditingScenario(null)}
+                busy={scenariosBusy}
+              />
+            )}
+
+            {scenariosMsg && (
+              <div style={{marginTop:8,fontSize:11,color: scenariosMsg.includes("failed") || scenariosMsg.includes("error") ? "#e08080" : "#9eddb0"}}>
+                {scenariosMsg}
+              </div>
+            )}
+          </div>
+        </Section>
+        </>)}
 
         <div style={{padding:"24px 20px 40px",textAlign:"center",fontSize:9,color:"#3a5a6a",letterSpacing:2}}>
           ⚓ HARA · SADAM
         </div>
       </div>
     </>
+  );
+}
+
+function ScenarioEditor({ value, onChange, onSave, onCancel, busy }) {
+  const FIELDS = [
+    { value:"cabin.humidity_pct", label:"Cabin humidity (%)" },
+    { value:"cabin.temperature_c", label:"Cabin temperature (°C)" },
+    { value:"dewpoint_c", label:"Dew point (°C)" },
+    { value:"battery.voltage", label:"Battery voltage (V)" },
+    { value:"battery.percent", label:"Battery charge (%)" },
+    { value:"water_depth_m", label:"Water depth (m)" },
+    { value:"water_temp_c", label:"Water temperature (°C)" },
+    { value:"bilge.water_cm", label:"Bilge water (cm)" },
+    { value:"ac.power_w", label:"AC power (W)" },
+    { value:"ac.voltage_v", label:"AC voltage (V)" },
+  ];
+  const sel = {
+    padding:"5px 8px",background:"rgba(255,255,255,0.06)",color:"#e8f4f8",
+    border:"1px solid rgba(126,171,200,0.3)",borderRadius:5,fontFamily:"inherit",fontSize:12,
+  };
+  const inp = { ...sel, width:80 };
+  const row = { display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",marginBottom:10 };
+
+  function set(k, v) { onChange({ ...value, [k]: v }); }
+
+  return (
+    <div style={{
+      background:"linear-gradient(180deg, rgba(13,36,56,0.8), rgba(9,28,44,0.8))",
+      border:"1px solid rgba(240,192,64,0.3)",borderRadius:8,padding:"16px 18px",marginTop:10,
+    }}>
+      <div style={{fontSize:9,letterSpacing:2,color:"#f0c040",textTransform:"uppercase",marginBottom:12}}>
+        {value._editIdx !== undefined ? "Edit Scenario" : "New Scenario"}
+      </div>
+
+      <div style={row}>
+        <label style={{fontSize:11,color:"#7eabc8",minWidth:60}}>Name</label>
+        <input value={value.name} onChange={(e)=>set("name",e.target.value)}
+          placeholder="e.g. Dehumidifier control"
+          style={{...inp, width:220}}
+        />
+      </div>
+
+      <div style={row}>
+        <label style={{fontSize:11,color:"#7eabc8",minWidth:60}}>Monitor</label>
+        <select value={value.field} onChange={(e)=>set("field",e.target.value)} style={sel}>
+          {FIELDS.map(f=><option key={f.value} value={f.value}>{f.label}</option>)}
+        </select>
+      </div>
+
+      <div style={row}>
+        <label style={{fontSize:11,color:"#7eabc8",minWidth:60}}>Condition</label>
+        <select value={value.condition} onChange={(e)=>set("condition",e.target.value)} style={{...sel,width:120}}>
+          <option value="gt">&gt; greater than</option>
+          <option value="gte">≥ at least</option>
+          <option value="lt">&lt; less than</option>
+          <option value="lte">≤ at most</option>
+        </select>
+        <input type="number" value={value.threshold} onChange={(e)=>set("threshold",Number(e.target.value))} style={inp} />
+        <label style={{fontSize:11,color:"#7eabc8"}}>± hysteresis</label>
+        <input type="number" value={value.hysteresis} min="0" onChange={(e)=>set("hysteresis",Number(e.target.value))} style={{...inp,width:64}} />
+      </div>
+
+      <div style={row}>
+        <label style={{fontSize:11,color:"#7eabc8",minWidth:60}}>Then</label>
+        <label style={{fontSize:11,color:"#9ec8e0"}}>Relay</label>
+        <select value={value.relay} onChange={(e)=>set("relay",Number(e.target.value))} style={{...sel,width:60}}>
+          <option value={1}>R1</option><option value={2}>R2</option>
+          <option value={3}>R3</option><option value={4}>R4</option>
+        </select>
+        <select value={String(value.action)} onChange={(e)=>set("action",e.target.value==="true")} style={{...sel,width:80}}>
+          <option value="true">turn ON</option>
+          <option value="false">turn OFF</option>
+        </select>
+      </div>
+
+      <div style={row}>
+        <label style={{fontSize:11,color:"#7eabc8",minWidth:60}}>Status</label>
+        <label style={{fontSize:11,color:"#9ec8e0",display:"flex",alignItems:"center",gap:6}}>
+          <input type="checkbox" checked={value.enabled} onChange={(e)=>set("enabled",e.target.checked)} />
+          Enabled
+        </label>
+      </div>
+
+      <div style={{fontSize:10,color:"#5a8aaa",marginBottom:12,lineHeight:1.5,fontStyle:"italic"}}>
+        Preview: IF {value.field} {value.condition} {value.threshold} (hysteresis ±{value.hysteresis}) → Relay {value.relay} {value.action ? "ON" : "OFF"}
+      </div>
+
+      <div style={{display:"flex",gap:8}}>
+        <button disabled={busy || !value.name.trim()} onClick={()=>onSave(value)}
+          style={{padding:"8px 14px",cursor:"pointer",
+            background:busy?"rgba(126,171,200,0.15)":"#f0c040",
+            color:busy?"#7eabc8":"#091820",border:"none",borderRadius:5,fontSize:12,fontWeight:"bold"}}>
+          {busy ? "Saving…" : "Save Scenario"}
+        </button>
+        <button onClick={onCancel}
+          style={{padding:"8px 14px",cursor:"pointer",background:"transparent",
+            color:"#7eabc8",border:"1px solid rgba(126,171,200,0.3)",borderRadius:5,fontSize:12}}>
+          Cancel
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -631,18 +1021,35 @@ function Section({ title, children, badge }) {
   );
 }
 
+function TelemetryGroup({ title, children, style }) {
+  return (
+    <div style={style}>
+      <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:8}}>{title}</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:12}}>{children}</div>
+    </div>
+  );
+}
+
 function BoatWindSection({ tel, ais, weather, isDemo }) {
   const wind = tel?.wind || {};
   const trueDir = isNum(wind?.true?.direction_deg) ? wind.true.direction_deg : null;
   const trueKn  = isNum(wind?.true?.speed_kn) ? wind.true.speed_kn : null;
+  const twaAng  = isNum(wind?.true?.angle_deg) ? wind.true.angle_deg : null;
   const appAng  = isNum(wind?.apparent?.angle_deg) ? wind.apparent.angle_deg : null;
   const appKn   = isNum(wind?.apparent?.speed_kn) ? wind.apparent.speed_kn : null;
   const heading = isNum(tel?.heading_deg) ? tel.heading_deg
                   : (isNum(ais?.heading) ? ais.heading : null);
   const cog     = isNum(tel?.cog_deg) ? tel.cog_deg
                   : (isNum(ais?.cog) ? ais.cog : null);
+  const sog     = isNum(tel?.sog_kn) ? tel.sog_kn
+                  : (isNum(ais?.sog) ? ais.sog : (isNum(tel?.boat_speed_kn) ? tel.boat_speed_kn : null));
 
-  const hasBoatWind = trueDir !== null || appAng !== null;
+  const moving = isNum(sog) && sog >= 0.8;
+  const mode = moving && twaAng !== null ? "TWA" : "AWA";
+  const modeAng = mode === "TWA" ? twaAng : appAng;
+  const modeKn = mode === "TWA" ? (trueKn ?? appKn) : appKn;
+
+  const hasBoatWind = modeAng !== null || trueDir !== null;
   const usingFallback = !hasBoatWind;
   // Fall back to Loksa weather station if boat sensor isn't reporting.
   const fallbackTrueDir = isNum(weather?.winddirection) ? weather.winddirection : null;
@@ -652,7 +1059,7 @@ function BoatWindSection({ tel, ais, weather, isDemo }) {
   const showTrueKn  = trueKn  ?? (usingFallback ? fallbackTrueKn  : null);
 
   const sourceLabel = hasBoatWind
-    ? (isDemo ? "Simulated" : "Boat sensor (NMEA0183)")
+    ? (isDemo ? "Simulated" : "Boat sensor (NMEA2000 push)")
     : (fallbackTrueDir !== null ? "Loksa weather station" : "No data");
 
   return (
@@ -666,12 +1073,14 @@ function BoatWindSection({ tel, ais, weather, isDemo }) {
           border:"1px solid rgba(126,171,200,0.18)",borderRadius:8,padding:"14px",
         }}>
           <BoatWindRose
-            trueDirDeg={showTrueDir}
-            trueSpeedKn={showTrueKn}
-            apparentAngle={appAng}
-            apparentSpeedKn={appKn}
-            headingDeg={heading}
-            cogDeg={cog}
+            trueDirDeg={usingFallback ? showTrueDir : null}
+            trueSpeedKn={usingFallback ? showTrueKn : null}
+            apparentAngle={modeAng}
+            apparentSpeedKn={modeKn}
+            headingDeg={null}
+            cogDeg={null}
+            centerModeLabel={`M/S ${mode}`}
+            relativeModeLabel={mode}
             size={240}
           />
           <div style={{fontSize:9,letterSpacing:1,color:"#5a8aaa",marginTop:8,textAlign:"center"}}>
@@ -679,18 +1088,18 @@ function BoatWindSection({ tel, ais, weather, isDemo }) {
           </div>
         </div>
         <div style={{flex:"1 1 220px",display:"flex",flexWrap:"wrap",gap:12,alignContent:"flex-start"}}>
+          <Stat label={mode}
+            value={isNum(modeAng) ? `${modeAng > 0 ? "▶" : "◀"} ${Math.round(Math.abs(modeAng))}°` : null}
+            unit="" color="#6ad4e8"/>
+          <Stat label={`${mode} speed`}
+            value={isNum(modeKn) ? knToMs(modeKn).toFixed(1) : null}
+            unit="m/s" color="#6ad4e8"/>
           <Stat label="True wind dir"
             value={isNum(showTrueDir) ? `${Math.round(showTrueDir)}°` : null}
             unit="" color="#f0c040"/>
           <Stat label="True wind speed"
             value={isNum(showTrueKn) ? knToMs(showTrueKn).toFixed(1) : null}
             unit="m/s" color="#f0c040"/>
-          <Stat label="Apparent wind"
-            value={isNum(appAng) ? `${appAng > 0 ? "▶" : "◀"} ${Math.round(Math.abs(appAng))}°` : null}
-            unit="" color="#6ad4e8"/>
-          <Stat label="AWS"
-            value={isNum(appKn) ? knToMs(appKn).toFixed(1) : null}
-            unit="m/s" color="#6ad4e8"/>
           <Stat label="Heading"
             value={isNum(heading) ? `${Math.round(heading)}°` : null}
             unit=""/>
@@ -700,8 +1109,8 @@ function BoatWindSection({ tel, ais, weather, isDemo }) {
         </div>
       </div>
       <div style={{fontSize:10,color:"#5a8aaa",marginTop:10,lineHeight:1.5}}>
-        Gold arrow: true wind direction (FROM). Cyan arrow: apparent wind on the boat.
-        White triangle on the rim: bow heading. Compass is true north up.
+        Wind rose is shown relative to boat bow (bow up). At low speed we show AWA;
+        when moving we switch to TWA if available.
       </div>
     </Section>
   );
@@ -745,7 +1154,9 @@ function AisStatus({ ais }) {
     );
   }
   const sty = AIS_STATE_STYLE[ais.state] || AIS_STATE_STYLE.unknown;
-  const mtUrl = ais.mmsi ? `https://www.marinetraffic.com/en/ais/details/ships/mmsi:${ais.mmsi}` : null;
+  const mtUrl = ais.marineTrafficUrl
+    || (ais.shipId ? `https://www.marinetraffic.com/en/ais/details/ships/shipid:${ais.shipId}` : null)
+    || (ais.mmsi ? `https://www.marinetraffic.com/en/ais/details/ships/mmsi:${ais.mmsi}` : null);
   return (
     <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
       <div style={{
