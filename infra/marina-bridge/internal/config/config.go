@@ -20,8 +20,9 @@ type Config struct {
 	} `yaml:"marina"`
 
 	Sources struct {
-		Cerbo CerboConfig `yaml:"cerbo"`
-		Ydwg  YdwgConfig  `yaml:"ydwg"`
+		Cerbo  CerboConfig  `yaml:"cerbo"`
+		Ydwg   YdwgConfig   `yaml:"ydwg"`
+		Emtrak EmtrakConfig `yaml:"emtrak"`
 	} `yaml:"sources"`
 
 	AisIngest AisIngestConfig `yaml:"ais_ingest"`
@@ -52,6 +53,14 @@ type YdwgConfig struct {
 	Address string `yaml:"address"`
 }
 
+// EmtrakConfig: connect to an em-trak B-class transponder's WiFi NMEA 0183
+// TCP server (default port 39150) and decode AIVDO (own vessel) + AIVDM
+// (other vessels heard over the air).
+type EmtrakConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	Address string `yaml:"address"` // host:port (e.g. 192.168.1.1:39150)
+}
+
 func Load(path string) (*Config, error) {
 	var c Config
 	if path != "" {
@@ -80,6 +89,9 @@ func Load(path string) (*Config, error) {
 	}
 	if c.Sources.Ydwg.Enabled && c.Sources.Ydwg.Address == "" {
 		return nil, fmt.Errorf("ydwg source requires address")
+	}
+	if c.Sources.Emtrak.Enabled && c.Sources.Emtrak.Address == "" {
+		return nil, fmt.Errorf("emtrak source requires address (host:port)")
 	}
 	return &c, nil
 }
@@ -125,6 +137,12 @@ func applyEnv(c *Config) {
 	}
 	if v := os.Getenv("YDWG_ADDRESS"); v != "" {
 		c.Sources.Ydwg.Address = v
+	}
+	if v := os.Getenv("EMTRAK_ENABLED"); v == "true" || v == "1" {
+		c.Sources.Emtrak.Enabled = true
+	}
+	if v := os.Getenv("EMTRAK_ADDRESS"); v != "" {
+		c.Sources.Emtrak.Address = v
 	}
 	if v := os.Getenv("AIS_INGEST_ENABLED"); v == "true" || v == "1" {
 		c.AisIngest.Enabled = true
