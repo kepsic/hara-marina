@@ -43,6 +43,8 @@ import (
 	"github.com/kepsic/hara-marina/marina-bridge/internal/telemetry"
 )
 
+var seenUnhandledPGN sync.Map
+
 // Run reads RAW frames from a YDWG-02 / YDEN-02 / YDNR-02 gateway over TCP.
 // Two modes:
 //
@@ -237,6 +239,10 @@ func parseLine(ctx context.Context, line string, snap *telemetry.Snapshot, reasm
 		handleEnv(data, snap)
 	case 130312:
 		handleTemp130312(data, snap)
+	default:
+		if _, loaded := seenUnhandledPGN.LoadOrStore(fmt.Sprintf("single:%d", pgn), struct{}{}); !loaded {
+			log.Printf("[ydwg] unhandled single-frame PGN=%d len=%d data=% X", pgn, len(data), data)
+		}
 	}
 }
 
@@ -253,6 +259,10 @@ func dispatchFastPacket(ctx context.Context, pgn uint32, payload []byte, names *
 		pusher.Push(ctx, fix)
 	case 129809:
 		decodePGN129809(payload, names)
+	default:
+		if _, loaded := seenUnhandledPGN.LoadOrStore(fmt.Sprintf("fast:%d", pgn), struct{}{}); !loaded {
+			log.Printf("[ydwg] unhandled fast-packet PGN=%d len=%d payload=% X", pgn, len(payload), payload)
+		}
 	}
 }
 
