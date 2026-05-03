@@ -85,6 +85,16 @@ func main() {
 		rule      = humidityRuleState{enabled: false, relay: 1, onAbove: 80, offBelow: 75}
 		scenarios []scenarioRuntime
 	)
+	relayBackendAvailable := cfg.Sources.Cerbo.Enabled || cfg.Sources.Ydwg.Enabled
+	writeRelay := func(relay int, state bool) error {
+		if cfg.Sources.Cerbo.Enabled {
+			return cerbo.WriteRelay(context.Background(), cfg.Sources.Cerbo, relay, state)
+		}
+		if cfg.Sources.Ydwg.Enabled {
+			return ydwg.WriteRelay(context.Background(), cfg.Sources.Ydwg, relay, state)
+		}
+		return fmt.Errorf("no relay backend enabled")
+	}
 
 	isConditionTrue := func(cond string, v, th float64) bool {
 		switch cond {
@@ -178,11 +188,11 @@ func main() {
 						log.Printf("[cmd] unsupported relay bank=%d relay=%d", cmd.Bank, cmd.Relay)
 						return
 					}
-					if !cfg.Sources.Cerbo.Enabled {
-						log.Printf("[cmd] cerbo source disabled; relay command ignored")
+					if !relayBackendAvailable {
+						log.Printf("[cmd] no relay backend enabled; relay command ignored")
 						return
 					}
-					if err := cerbo.WriteRelay(context.Background(), cfg.Sources.Cerbo, cmd.Relay, cmd.State); err != nil {
+					if err := writeRelay(cmd.Relay, cmd.State); err != nil {
 						log.Printf("[cmd] relay write failed relay=%d state=%t: %v", cmd.Relay, cmd.State, err)
 						return
 					}
@@ -265,7 +275,7 @@ func main() {
 		scenariosCopy := make([]scenarioRuntime, len(scenarios))
 		copy(scenariosCopy, scenarios)
 		ruleMu.Unlock()
-		if ruleCopy.enabled && cfg.Sources.Cerbo.Enabled {
+		if ruleCopy.enabled && relayBackendAvailable {
 			if h, ok := snap.GetCabinHumidityPct(); ok {
 				current, hasCurrent := snap.GetRelayBank1(ruleCopy.relay)
 				desired := current
@@ -282,7 +292,7 @@ func main() {
 					shouldWrite = *ruleCopy.desired != desired
 				}
 				if shouldWrite {
-					if err := cerbo.WriteRelay(context.Background(), cfg.Sources.Cerbo, ruleCopy.relay, desired); err != nil {
+					if err := writeRelay(ruleCopy.relay, desired); err != nil {
 						log.Printf("[auto] humidity relay write failed relay=%d desired=%t humidity=%.1f: %v", ruleCopy.relay, desired, h, err)
 					} else {
 						snap.SetRelayBank1(ruleCopy.relay, desired)
@@ -295,7 +305,7 @@ func main() {
 			}
 		}
 
-		if cfg.Sources.Cerbo.Enabled && len(scenariosCopy) > 0 {
+		if relayBackendAvailable && len(scenariosCopy) > 0 {
 			desiredByRelay := map[int]bool{}
 			for i := range scenariosCopy {
 				sr := &scenariosCopy[i]
@@ -331,7 +341,7 @@ func main() {
 				if hasCurrent && current == desired {
 					continue
 				}
-				if err := cerbo.WriteRelay(context.Background(), cfg.Sources.Cerbo, relay, desired); err != nil {
+				if err := writeRelay(relay, desired); err != nil {
 					log.Printf("[auto-scenario] relay write failed relay=%d desired=%t: %v", relay, desired, err)
 					continue
 				}

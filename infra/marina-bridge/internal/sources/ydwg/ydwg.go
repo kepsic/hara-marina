@@ -48,6 +48,97 @@ import (
 
 var seenUnhandledPGN sync.Map
 
+var (
+	txConnMu sync.RWMutex
+	txConn   net.Conn
+)
+
+func setTxConn(c net.Conn) {
+	txConnMu.Lock()
+	defer txConnMu.Unlock()
+	txConn = c
+}
+
+func clearTxConn(c net.Conn) {
+	txConnMu.Lock()
+	defer txConnMu.Unlock()
+	if txConn == c {
+		txConn = nil
+	}
+}
+
+func getTxConn() net.Conn {
+	txConnMu.RLock()
+	defer txConnMu.RUnlock()
+	return txConn
+}
+
+func canIDForPGN(pgn uint32, src uint8, priority uint8) uint32 {
+	pf := uint8((pgn >> 8) & 0xFF)
+	ps := uint8(pgn & 0xFF)
+	dp := uint8((pgn >> 16) & 0x01)
+	if pf < 240 {
+		ps = 0xFF // global destination for PDU1
+	}
+	return uint32(priority&0x7)<<26 | uint32(dp)<<24 | uint32(pf)<<16 | uint32(ps)<<8 | uint32(src)
+}
+
+func writeRawFrame(ctx context.Context, canID uint32, data []byte) error {
+	conn := getTxConn()
+	if conn == nil {
+		return fmt.Errorf("ydwg tx connection unavailable")
+	}
+	if len(data) == 0 || len(data) > 8 {
+		return fmt.Errorf("invalid CAN payload length %d", len(data))
+	}
+
+	ts := time.Now().Format("15:04:05.000")
+	parts := make([]string, 0, len(data))
+	for _, b := range data {
+		parts = append(parts, fmt.Sprintf("%02X", b))
+	}
+	line := fmt.Sprintf("%s T %08X %s\n", ts, canID, strings.Join(parts, " "))
+
+	if dl, ok := ctx.Deadline(); ok {
+		_ = conn.SetWriteDeadline(dl)
+	} else {
+		_ = conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+	}
+	_, err := conn.Write([]byte(line))
+	_ = conn.SetWriteDeadline(time.Time{})
+	if err != nil {
+		return fmt.Errorf("ydwg write: %w", err)
+	}
+	return nil
+}
+
+// WriteRelay sends a best-effort N2K Binary Switch Bank Control command
+// (PGN 127502) through the active YDWG RAW TCP connection.
+func WriteRelay(ctx context.Context, cfg config.YdwgConfig, relayIndex int, on bool) error {
+	if !cfg.Enabled {
+		return fmt.Errorf("ydwg source disabled")
+	}
+	if relayIndex < 1 || relayIndex > 4 {
+		return fmt.Errorf("relay index must be 1..4")
+	}
+
+	stateByte := byte(0xFF) // default: leave channels unchanged/unavailable
+	shift := uint((relayIndex - 1) * 2)
+	state := byte(0)
+	if on {
+		state = 1
+	}
+	stateByte = (stateByte & ^(byte(0x03) << shift)) | (state << shift)
+
+	payload := []byte{0x01, stateByte, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+	canID := canIDForPGN(127502, 0xFA, 3)
+	if err := writeRawFrame(ctx, canID, payload); err != nil {
+		return err
+	}
+	log.Printf("[ydwg] relay control sent pgn=127502 relay=%d state=%t", relayIndex, on)
+	return nil
+}
+
 // Run reads RAW frames from a YDWG-02 / YDEN-02 / YDNR-02 gateway over TCP.
 // Two modes:
 //
@@ -88,6 +179,8 @@ func runClient(ctx context.Context, addr string, snap *telemetry.Snapshot, pushe
 		return fmt.Errorf("dial: %w", err)
 	}
 	defer conn.Close()
+	setTxConn(conn)
+	defer clearTxConn(conn)
 	log.Printf("[ydwg] connected to %s", addr)
 
 	go func() { <-ctx.Done(); conn.Close() }()
@@ -119,7 +212,9 @@ func runServer(ctx context.Context, listen string, snap *telemetry.Snapshot, pus
 		prev := curConn
 		curConn = next
 		curMu.Unlock()
+		setTxConn(next)
 		if prev != nil {
+			clearTxConn(prev)
 			_ = prev.Close()
 		}
 	}
@@ -157,6 +252,7 @@ func readFrames(ctx context.Context, conn net.Conn, snap *telemetry.Snapshot, pu
 	for sc.Scan() {
 		parseLine(ctx, sc.Text(), snap, reasm, names, pusher)
 	}
+	clearTxConn(conn)
 	return sc.Err()
 }
 
