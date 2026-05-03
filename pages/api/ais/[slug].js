@@ -1,4 +1,9 @@
-import { verifySession, SESSION_COOKIE_NAME } from "../../../lib/auth";
+import {
+  verifySession,
+  SESSION_COOKIE_NAME,
+  verifyBoatShareSession,
+  BOAT_SHARE_COOKIE_NAME,
+} from "../../../lib/auth";
 import { canViewBoat } from "../../../lib/owners";
 import { fetchSnapshot, isConfigured as cacheConfigured } from "../../../lib/aisCacheClient";
 import { classifyMarinaState, MARINA } from "../../../lib/marina";
@@ -29,7 +34,10 @@ export default async function handler(req, res) {
 
   const token = req.cookies?.[SESSION_COOKIE_NAME];
   const session = await verifySession(token);
-  if (!session?.email || !canViewBoat(session.email, slug)) {
+  const share = await verifyBoatShareSession(req.cookies?.[BOAT_SHARE_COOKIE_NAME]);
+  const hasOwnerAccess = !!session?.email && canViewBoat(session.email, slug);
+  const hasShareAccess = share?.slug === slug;
+  if (!hasOwnerAccess && !hasShareAccess) {
     res.setHeader("Cache-Control", "no-store");
     return res.status(401).json({ error: "auth required" });
   }

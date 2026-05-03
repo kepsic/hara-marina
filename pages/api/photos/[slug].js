@@ -1,7 +1,12 @@
 import { handleUpload } from "@vercel/blob/client";
 import { del } from "@vercel/blob";
 import { Redis } from "@upstash/redis";
-import { verifySession, SESSION_COOKIE_NAME } from "../../../lib/auth";
+import {
+  verifySession,
+  SESSION_COOKIE_NAME,
+  verifyBoatShareSession,
+  BOAT_SHARE_COOKIE_NAME,
+} from "../../../lib/auth";
 import { canViewBoat, norm } from "../../../lib/owners";
 
 const redis = new Redis({
@@ -24,16 +29,18 @@ async function setPhotos(slug, list) {
 export default async function handler(req, res) {
   const slug = norm(req.query.slug);
   const session = await verifySession(req.cookies?.[SESSION_COOKIE_NAME]);
+  const share = await verifyBoatShareSession(req.cookies?.[BOAT_SHARE_COOKIE_NAME]);
   const email = session?.email;
-  const allowed = !!email && canViewBoat(email, slug);
+  const ownerAllowed = !!email && canViewBoat(email, slug);
+  const shareAllowed = share?.slug === slug;
 
   if (req.method === "GET") {
-    if (!allowed) return res.status(403).json({ error: "forbidden" });
+    if (!ownerAllowed && !shareAllowed) return res.status(403).json({ error: "forbidden" });
     return res.status(200).json({ photos: await getPhotos(slug) });
   }
 
   if (req.method === "DELETE") {
-    if (!allowed) return res.status(403).json({ error: "forbidden" });
+    if (!ownerAllowed) return res.status(403).json({ error: "forbidden" });
     const url = req.query.url;
     if (!url) return res.status(400).json({ error: "url required" });
     const list = await getPhotos(slug);
@@ -51,7 +58,7 @@ export default async function handler(req, res) {
     // Client confirmation after a successful blob upload (works in dev,
     // and is idempotent with the onUploadCompleted webhook in prod).
     if (body.action === "register") {
-      if (!allowed) return res.status(403).json({ error: "forbidden" });
+      if (!ownerAllowed) return res.status(403).json({ error: "forbidden" });
       if (!body.url || !body.pathname) {
         return res.status(400).json({ error: "url and pathname required" });
       }
@@ -75,7 +82,7 @@ export default async function handler(req, res) {
         body,
         request: req,
         onBeforeGenerateToken: async (/* pathname, clientPayload */) => {
-          if (!allowed) throw new Error("Unauthorized");
+          if (!ownerAllowed) throw new Error("Unauthorized");
           return {
             allowedContentTypes: [
               "image/jpeg",

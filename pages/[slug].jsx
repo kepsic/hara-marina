@@ -3,7 +3,12 @@ import Head from "next/head";
 import Link from "next/link";
 import { INITIAL_BOATS } from "../lib/constants";
 import { makeTelemetry } from "../lib/telemetry";
-import { verifySession, SESSION_COOKIE_NAME } from "../lib/auth";
+import {
+  verifySession,
+  SESSION_COOKIE_NAME,
+  verifyBoatShareSession,
+  BOAT_SHARE_COOKIE_NAME,
+} from "../lib/auth";
 import { canViewBoat } from "../lib/owners";
 import BoatPhotos from "../components/BoatPhotos";
 import BoatWindRose from "../components/BoatWindRose";
@@ -14,7 +19,7 @@ const isNum = (v) => typeof v === "number" && Number.isFinite(v);
 const fmt = (v, d = 1) => (isNum(v) ? v.toFixed(d) : null);
 const knToMs = (kn) => kn * 0.514444;
 
-export async function getServerSideProps({ req, params }) {
+export async function getServerSideProps({ req, params, query }) {
   const slug = params.slug;
   const boat = INITIAL_BOATS.find((b) => norm(b.name) === slug);
   if (!boat) return { notFound: true };
@@ -23,16 +28,47 @@ export async function getServerSideProps({ req, params }) {
   const session = await verifySession(token);
   const email = session?.email;
 
-  if (!email || !canViewBoat(email, slug)) {
+  if (email && canViewBoat(email, slug)) {
+    return { props: { initialBoat: boat, viewerEmail: email, accessKind: "owner", lockType: null, shareId: null } };
+  }
+
+  const shareSession = await verifyBoatShareSession(req.cookies?.[BOAT_SHARE_COOKIE_NAME]);
+  if (shareSession?.slug === slug) {
+    return { props: { initialBoat: boat, viewerEmail: null, accessKind: "shared", lockType: null, shareId: null } };
+  }
+
+  const { hasOwnerPin, isShareIdActive } = await import("../lib/boatAccess");
+  const shareId = typeof query.share === "string" ? query.share : null;
+  if (shareId && await isShareIdActive(slug, shareId)) {
     return {
-      redirect: {
-        destination: `/login?next=${encodeURIComponent(`/${slug}`)}`,
-        permanent: false,
+      props: {
+        initialBoat: boat,
+        viewerEmail: null,
+        accessKind: "pin-locked",
+        lockType: "temporary",
+        shareId,
       },
     };
   }
 
-  return { props: { initialBoat: boat, viewerEmail: email } };
+  if (await hasOwnerPin(slug)) {
+    return {
+      props: {
+        initialBoat: boat,
+        viewerEmail: null,
+        accessKind: "pin-locked",
+        lockType: "owner",
+        shareId: null,
+      },
+    };
+  }
+
+  return {
+    redirect: {
+      destination: `/login?next=${encodeURIComponent(`/${slug}`)}`,
+      permanent: false,
+    },
+  };
 }
 
 function Stat({ label, value, unit, color = "#e8f4f8", big }) {
@@ -52,15 +88,27 @@ function Stat({ label, value, unit, color = "#e8f4f8", big }) {
   );
 }
 
-export default function BoatPage({ initialBoat, viewerEmail }) {
+export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner", lockType = null, shareId = null }) {
   const [boat, setBoat] = useState(initialBoat);
   const slug = norm(initialBoat.name);
   const [tel, setTel] = useState(() => makeTelemetry(initialBoat));
   const [weather, setWeather] = useState(null);
   const [ais, setAis] = useState(null);
+  const [pinInput, setPinInput] = useState("");
+  const [pinBusy, setPinBusy] = useState(false);
+  const [pinErr, setPinErr] = useState("");
+  const [ownerPin, setOwnerPin] = useState("");
+  const [ownerPinBusy, setOwnerPinBusy] = useState(false);
+  const [ownerPinMsg, setOwnerPinMsg] = useState("");
+  const [accessInfo, setAccessInfo] = useState(null);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareMsg, setShareMsg] = useState("");
+  const [shareData, setShareData] = useState(null);
+  const [shareTtlMin, setShareTtlMin] = useState(120);
 
   // Pull live boat overrides (in case it was edited via the marina UI)
   useEffect(() => {
+    if (accessKind === "pin-locked") return;
     let alive = true;
     async function load() {
       try {
@@ -81,6 +129,7 @@ export default function BoatPage({ initialBoat, viewerEmail }) {
 
   // Telemetry refresh — full replace, never merge live with demo.
   useEffect(() => {
+    if (accessKind === "pin-locked") return;
     let alive = true;
     async function load() {
       try {
@@ -97,6 +146,7 @@ export default function BoatPage({ initialBoat, viewerEmail }) {
 
   // AIS / marina state (Moored | Anchored nearby | Underway | Away)
   useEffect(() => {
+    if (accessKind === "pin-locked") return;
     let alive = true;
     async function load() {
       try {
@@ -113,6 +163,7 @@ export default function BoatPage({ initialBoat, viewerEmail }) {
 
   // Loksa weather
   useEffect(() => {
+    if (accessKind === "pin-locked") return;
     let alive = true;
     async function load() {
       try {
@@ -127,11 +178,169 @@ export default function BoatPage({ initialBoat, viewerEmail }) {
     return () => { alive = false; clearInterval(t); };
   }, []);
 
+  useEffect(() => {
+    if (accessKind !== "owner") return;
+    let alive = true;
+    async function loadAccess() {
+      try {
+        const r = await fetch(`/api/boat-access/${slug}`);
+        if (!r.ok) return;
+        const j = await r.json();
+        if (alive) setAccessInfo(j);
+      } catch {}
+    }
+    loadAccess();
+    return () => { alive = false; };
+  }, [accessKind, slug]);
+
   const lastSeen = tel.last_seen_ago < 60
     ? `${tel.last_seen_ago}s ago`
     : `${Math.round(tel.last_seen_ago / 60)} min ago`;
   const fresh = tel.last_seen_ago < 120;
   const isDemo = tel.source === "demo";
+  const isOwnerView = accessKind === "owner";
+
+  async function submitPin(e) {
+    e.preventDefault();
+    setPinBusy(true);
+    setPinErr("");
+    try {
+      const r = await fetch("/api/boat-access/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug, pin: pinInput, shareId }),
+      });
+      const j = await r.json();
+      if (!r.ok) {
+        setPinErr(j.error || "invalid PIN");
+      } else {
+        window.location.href = `/${slug}`;
+      }
+    } catch {
+      setPinErr("network error");
+    } finally {
+      setPinBusy(false);
+    }
+  }
+
+  async function saveOwnerPin(e) {
+    e.preventDefault();
+    setOwnerPinBusy(true);
+    setOwnerPinMsg("");
+    try {
+      const r = await fetch(`/api/boat-access/${slug}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ownerPin }),
+      });
+      const j = await r.json();
+      if (!r.ok) {
+        setOwnerPinMsg(j.error || "could not save");
+      } else {
+        setOwnerPin("");
+        setOwnerPinMsg("PIN saved");
+        setAccessInfo((prev) => ({ ...(prev || {}), ownerPinSet: true }));
+      }
+    } catch {
+      setOwnerPinMsg("network error");
+    } finally {
+      setOwnerPinBusy(false);
+    }
+  }
+
+  async function createShare() {
+    setShareBusy(true);
+    setShareMsg("");
+    try {
+      const r = await fetch(`/api/boat-access/${slug}/share`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ttlMinutes: shareTtlMin }),
+      });
+      const j = await r.json();
+      if (!r.ok) {
+        setShareMsg(j.error || "could not create share");
+      } else {
+        setShareData(j);
+        setShareMsg("Temporary share created");
+        setAccessInfo((prev) => ({
+          ...(prev || {}),
+          activeShare: {
+            id: j.shareId,
+            expiresAtMs: j.expiresAtMs,
+            createdAtMs: Date.now(),
+          },
+        }));
+      }
+    } catch {
+      setShareMsg("network error");
+    } finally {
+      setShareBusy(false);
+    }
+  }
+
+  if (accessKind === "pin-locked") {
+    return (
+      <>
+        <Head>
+          <title>{boat.name} · Hara Marina</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1"/>
+          <meta name="theme-color" content="#091820"/>
+          <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex"/>
+          <meta name="googlebot" content="noindex, nofollow"/>
+        </Head>
+        <div style={{
+          minHeight:"100vh",
+          background:"radial-gradient(ellipse at 30% 20%,#0d3050 0%,#071520 70%)",
+          fontFamily:"'Georgia','Times New Roman',serif", color:"#e8f4f8",
+          display:"flex",alignItems:"center",justifyContent:"center",padding:20,
+        }}>
+          <div style={{
+            width:"100%",maxWidth:420,
+            background:"linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
+            border:"1px solid rgba(126,171,200,0.18)",borderRadius:10,padding:"28px 24px",
+          }}>
+            <div style={{fontSize:9,letterSpacing:4,color:"#7eabc8",textTransform:"uppercase",marginBottom:6}}>
+              {lockType === "temporary" ? "Temporary Share PIN" : "Boat PIN"}
+            </div>
+            <h1 style={{margin:"0 0 14px",fontSize:24,letterSpacing:2}}>{boat.name}</h1>
+            <p style={{marginTop:0,fontSize:12,color:"#9ec8e0",lineHeight:1.6}}>
+              {lockType === "temporary"
+                ? "This shared link is protected. Enter the temporary PIN provided by the owner."
+                : "This boat page is PIN-protected. Enter the boat PIN to continue."}
+            </p>
+            <form onSubmit={submitPin}>
+              <input
+                value={pinInput}
+                onChange={(e) => setPinInput(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                placeholder="PIN"
+                inputMode="numeric"
+                autoFocus
+                style={{
+                  width:"100%",boxSizing:"border-box",padding:"10px 12px",fontSize:18,letterSpacing:4,
+                  background:"rgba(255,255,255,0.06)",border:"1px solid rgba(126,171,200,0.25)",
+                  color:"#e8f4f8",borderRadius:6,outline:"none",fontFamily:"inherit",textAlign:"center",
+                }}
+              />
+              <button type="submit" disabled={pinBusy || pinInput.length < 4}
+                style={{
+                  marginTop:12,width:"100%",padding:"10px",cursor:"pointer",
+                  background:pinBusy?"rgba(126,171,200,0.15)":"#f0c040",
+                  color:pinBusy?"#7eabc8":"#091820",
+                  border:"none",borderRadius:6,fontSize:13,letterSpacing:2,fontWeight:"bold",fontFamily:"inherit",
+                }}>
+                {pinBusy ? "Checking…" : "Unlock boat page"}
+              </button>
+              {pinErr && <div style={{marginTop:10,fontSize:11,color:"#e08080"}}>{pinErr}</div>}
+            </form>
+            <div style={{marginTop:18,fontSize:10,color:"#5a8aaa",textAlign:"center"}}>
+              <a href="/login" style={{color:"#7eabc8",textDecoration:"none"}}>Owner sign in</a>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -156,10 +365,12 @@ export default function BoatPage({ initialBoat, viewerEmail }) {
             ← HARA MARINA
           </Link>
           <div style={{display:"flex",alignItems:"center",gap:14}}>
-            {viewerEmail && (
+            {(viewerEmail || accessKind === "shared") && (
               <div style={{fontSize:9,color:"#5a8aaa",letterSpacing:1}}>
-                {viewerEmail} ·{" "}
-                <a href="/api/auth/logout" style={{color:"#7eabc8",textDecoration:"none"}}>sign out</a>
+                {viewerEmail || "shared guest"} ·{" "}
+                <a href="/api/auth/logout" style={{color:"#7eabc8",textDecoration:"none"}}>
+                  {viewerEmail ? "sign out" : "leave share"}
+                </a>
               </div>
             )}
             <div style={{textAlign:"right"}}>
@@ -195,6 +406,93 @@ export default function BoatPage({ initialBoat, viewerEmail }) {
             </div>
           </div>
         </div>
+
+        {isOwnerView && (
+          <Section title="🔐 Access & Sharing">
+            <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
+              <div style={{
+                flex:"1 1 300px",background:"linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
+                border:"1px solid rgba(126,171,200,0.18)",borderRadius:8,padding:"12px 14px",
+              }}>
+                <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:8}}>
+                  Boat PIN
+                </div>
+                <div style={{fontSize:12,color:"#9ec8e0",lineHeight:1.5,marginBottom:10}}>
+                  Set a persistent PIN for /{slug}. Visitors can unlock this boat page using that PIN.
+                </div>
+                <form onSubmit={saveOwnerPin} style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                  <input
+                    value={ownerPin}
+                    onChange={(e) => setOwnerPin(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                    placeholder="4-10 digit PIN"
+                    inputMode="numeric"
+                    style={{
+                      flex:"1 1 160px",padding:"8px 10px",fontSize:13,
+                      background:"rgba(255,255,255,0.06)",border:"1px solid rgba(126,171,200,0.25)",
+                      color:"#e8f4f8",borderRadius:6,outline:"none",fontFamily:"inherit",
+                    }}
+                  />
+                  <button type="submit" disabled={ownerPinBusy || ownerPin.length < 4}
+                    style={{
+                      padding:"8px 12px",cursor:"pointer",background:ownerPinBusy?"rgba(126,171,200,0.15)":"#f0c040",
+                      color:ownerPinBusy?"#7eabc8":"#091820",border:"none",borderRadius:6,
+                      fontSize:12,letterSpacing:1,fontWeight:"bold",fontFamily:"inherit",
+                    }}>
+                    {ownerPinBusy ? "Saving…" : (accessInfo?.ownerPinSet ? "Update PIN" : "Set PIN")}
+                  </button>
+                </form>
+                <div style={{fontSize:11,color:ownerPinMsg === "PIN saved" ? "#9eddb0" : "#5a8aaa",marginTop:8}}>
+                  {ownerPinMsg || (accessInfo?.ownerPinSet ? "PIN is configured" : "PIN not set yet")}
+                </div>
+              </div>
+
+              <div style={{
+                flex:"1 1 300px",background:"linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
+                border:"1px solid rgba(126,171,200,0.18)",borderRadius:8,padding:"12px 14px",
+              }}>
+                <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:8}}>
+                  Temporary Share PIN
+                </div>
+                <div style={{fontSize:12,color:"#9ec8e0",lineHeight:1.5,marginBottom:10}}>
+                  Create a temporary shared link with one-time PIN. Anyone with link+PIN can view this boat until expiry.
+                </div>
+                <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                  <label style={{fontSize:11,color:"#7eabc8"}}>TTL (min)</label>
+                  <input
+                    value={shareTtlMin}
+                    onChange={(e) => setShareTtlMin(Math.max(5, Math.min(1440, Number(e.target.value || 60))))}
+                    type="number"
+                    min="5"
+                    max="1440"
+                    style={{
+                      width:88,padding:"8px 10px",fontSize:13,
+                      background:"rgba(255,255,255,0.06)",border:"1px solid rgba(126,171,200,0.25)",
+                      color:"#e8f4f8",borderRadius:6,outline:"none",fontFamily:"inherit",
+                    }}
+                  />
+                  <button onClick={createShare} disabled={shareBusy}
+                    style={{
+                      padding:"8px 12px",cursor:"pointer",background:shareBusy?"rgba(126,171,200,0.15)":"#f0c040",
+                      color:shareBusy?"#7eabc8":"#091820",border:"none",borderRadius:6,
+                      fontSize:12,letterSpacing:1,fontWeight:"bold",fontFamily:"inherit",
+                    }}>
+                    {shareBusy ? "Creating…" : "Create temporary share"}
+                  </button>
+                </div>
+                <div style={{fontSize:11,color:"#5a8aaa",marginTop:8}}>
+                  {shareMsg || (accessInfo?.activeShare ? `Active share expires ${new Date(accessInfo.activeShare.expiresAtMs).toLocaleString()}` : "No active temporary share")}
+                </div>
+                {shareData && (
+                  <div style={{marginTop:10,fontSize:11,color:"#c8e0f0",lineHeight:1.6}}>
+                    <div>Link: <a href={shareData.shareUrl} style={{color:"#6ab0e8",textDecoration:"none"}}>{shareData.shareUrl}</a></div>
+                    <div>PIN: <strong>{shareData.pin}</strong></div>
+                    <div>Expires: {new Date(shareData.expiresAtMs).toLocaleString()}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </Section>
+        )}
 
         {/* Telemetry section */}
         <Section title="🛰 Telemetry" badge={isDemo ? "DEMO" : null}>

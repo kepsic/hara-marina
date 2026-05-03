@@ -1,7 +1,7 @@
-import { clearSessionCookieHeader } from "../../../lib/auth";
+import { clearBoatShareCookieHeader, clearSessionCookieHeader } from "../../../lib/auth";
 
 export default async function handler(req, res) {
-  res.setHeader("Set-Cookie", clearSessionCookieHeader());
+  res.setHeader("Set-Cookie", [clearSessionCookieHeader(), clearBoatShareCookieHeader()]);
   if (req.method === "GET") {
     res.writeHead(302, { Location: "/" });
     res.end();
