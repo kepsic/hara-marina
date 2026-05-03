@@ -255,13 +255,34 @@ func parseLine(ctx context.Context, line string, snap *telemetry.Snapshot, reasm
 	case 130314:
 		handlePressure130314(data, snap)
 	case 130316:
-		// Extended range temperature; many devices emit unavailable (FF) payloads.
-		// Keep as known-but-not-mapped to avoid noisy "unhandled" logs.
+		handleTemp130316(data)
 		return
 	default:
 		if _, loaded := seenUnhandledPGN.LoadOrStore(fmt.Sprintf("single:%d", pgn), struct{}{}); !loaded {
 			log.Printf("[ydwg] unhandled single-frame PGN=%d len=%d data=% X", pgn, len(data), data)
 		}
+	}
+}
+
+// PGN 130316: Temperature, Extended Range.
+// Many buses emit only unavailable values here. Log one-time only when payload
+// appears to carry real data so we can implement an exact decoder from samples.
+func handleTemp130316(d []byte) {
+	if len(d) < 8 {
+		return
+	}
+	hasReal := false
+	for _, b := range d[3:8] {
+		if b != 0xFF {
+			hasReal = true
+			break
+		}
+	}
+	if !hasReal {
+		return
+	}
+	if _, loaded := seenUnhandledPGN.LoadOrStore("known:130316", struct{}{}); !loaded {
+		log.Printf("[ydwg] PGN 130316 carries data; decoder not implemented yet payload=% X", d)
 	}
 }
 
