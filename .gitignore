@@ -6,3 +6,5 @@ node_modules/
 .env*.local
 /infra/marina-bridge/marina-bridge.bin
 /infra/cerbo-emulator/cerbo-emulator.bin
+
+.playwright-mcp/
