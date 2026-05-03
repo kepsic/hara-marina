@@ -1,6 +1,6 @@
 import { verifySession, SESSION_COOKIE_NAME } from "../../../lib/auth";
 import { canViewBoat } from "../../../lib/owners";
-import { getAisSnapshot } from "../../../lib/aisStream";
+import { getCachedSnapshot } from "../../../lib/aisStream";
 import { classifyMarinaState, MARINA } from "../../../lib/marina";
 import { Redis } from "@upstash/redis";
 
@@ -44,14 +44,14 @@ export default async function handler(req, res) {
     return res.status(200).json({ configured: false, reason: "boat has no mmsi" });
   }
 
-  const snap = await getAisSnapshot(mmsi);
-  if (!snap || snap.empty) {
+  const snap = await getCachedSnapshot(mmsi);
+  if (!snap || !Number.isFinite(snap.lat)) {
     return res.status(200).json({
       configured: true,
       mmsi,
       marina: MARINA,
       state: "no_signal",
-      label: "No AIS signal",
+      label: "No AIS signal yet",
       lastSeenMs: null,
     });
   }
