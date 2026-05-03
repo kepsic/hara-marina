@@ -52,6 +52,7 @@ export default function BoatPage({ initialBoat, viewerEmail }) {
   const slug = norm(initialBoat.name);
   const [tel, setTel] = useState(() => makeTelemetry(initialBoat));
   const [weather, setWeather] = useState(null);
+  const [ais, setAis] = useState(null);
 
   // Pull live boat overrides (in case it was edited via the marina UI)
   useEffect(() => {
@@ -96,6 +97,22 @@ export default function BoatPage({ initialBoat, viewerEmail }) {
     }
     load();
     const t = setInterval(load, 30000);
+    return () => { alive = false; clearInterval(t); };
+  }, [slug]);
+
+  // AIS / marina state (Moored | Anchored nearby | Underway | Away)
+  useEffect(() => {
+    let alive = true;
+    async function load() {
+      try {
+        const r = await fetch(`/api/ais/${slug}`);
+        if (!r.ok) return;
+        const j = await r.json();
+        if (alive) setAis(j);
+      } catch {}
+    }
+    load();
+    const t = setInterval(load, 60000);
     return () => { alive = false; clearInterval(t); };
   }, [slug]);
 
@@ -211,6 +228,11 @@ export default function BoatPage({ initialBoat, viewerEmail }) {
           </div>
         </Section>
 
+        {/* AIS / Marina state */}
+        <Section title="📡 AIS · Marina Status">
+          <AisStatus ais={ais} />
+        </Section>
+
         {/* Weather (Loksa) */}
         <Section title="🌬 Local Conditions · Loksa Station">
           {weather ? (
@@ -283,3 +305,93 @@ function Section({ title, children }) {
     </div>
   );
 }
+
+const AIS_STATE_STYLE = {
+  moored:           { color: "#2a9a4a", icon: "⚓", text: "Moored at Hara Sadam" },
+  anchored_nearby:  { color: "#6ab0e8", icon: "⚓", text: "Anchored near Hara" },
+  underway:         { color: "#f0c040", icon: "▶",  text: "Underway" },
+  away:             { color: "#a08040", icon: "◌",  text: "Away from marina" },
+  no_signal:        { color: "#5a8aaa", icon: "◌",  text: "No AIS signal" },
+  unknown:          { color: "#5a8aaa", icon: "?",  text: "Unknown" },
+};
+
+function fmtDist(m) {
+  if (m == null || !Number.isFinite(m)) return "—";
+  if (m < 1000) return `${Math.round(m)} m`;
+  return `${(m / 1852).toFixed(1)} NM`;
+}
+function fmtAge(ms) {
+  if (ms == null) return "—";
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  return `${Math.floor(s / 3600)} h ago`;
+}
+
+function AisStatus({ ais }) {
+  if (!ais) {
+    return <div style={{fontSize:11,color:"#5a8aaa"}}>◌ querying AIS…</div>;
+  }
+  if (ais.configured === false) {
+    return (
+      <div style={{fontSize:11,color:"#5a8aaa",lineHeight:1.6}}>
+        AIS lookup not configured for this boat
+        {ais.reason ? <span style={{color:"#3a5a6a"}}> · {ais.reason}</span> : null}
+        <div style={{marginTop:4,fontSize:10,color:"#3a5a6a"}}>
+          Add an <code>mmsi</code> field to the boat record (and set <code>AISSTREAM_API_KEY</code>) to enable.
+        </div>
+      </div>
+    );
+  }
+  const sty = AIS_STATE_STYLE[ais.state] || AIS_STATE_STYLE.unknown;
+  return (
+    <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
+      <div style={{
+        flex:"1 1 260px",background:"linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
+        border:`1px solid ${sty.color}55`,borderRadius:8,padding:"14px 16px",
+      }}>
+        <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:6}}>State</div>
+        <div style={{fontSize:22,fontWeight:"bold",color:sty.color,fontFamily:"Georgia, serif"}}>
+          {sty.icon} {sty.text}
+        </div>
+        <div style={{fontSize:11,color:"#9ec8e0",marginTop:6}}>
+          Distance to Hara: <strong>{fmtDist(ais.distanceM)}</strong>
+          {ais.lastSeenMs != null && <> · last fix {fmtAge(ais.lastSeenMs)}</>}
+        </div>
+      </div>
+
+      <div style={{
+        flex:"1 1 200px",background:"linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
+        border:"1px solid rgba(126,171,200,0.18)",borderRadius:8,padding:"12px 14px",
+      }}>
+        <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:6}}>Speed / Course</div>
+        <div style={{fontFamily:"monospace",fontSize:13,color:"#e8f4f8",lineHeight:1.7}}>
+          SOG {Number.isFinite(ais.sog) ? ais.sog.toFixed(1) : "—"} kn<br/>
+          COG {Number.isFinite(ais.cog) ? Math.round(ais.cog) + "°" : "—"}
+          {Number.isFinite(ais.heading) && ais.heading !== 511 && <> · HDG {Math.round(ais.heading)}°</>}
+        </div>
+      </div>
+
+      {Number.isFinite(ais.lat) && Number.isFinite(ais.lon) && (
+        <div style={{
+          flex:"1 1 240px",background:"linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
+          border:"1px solid rgba(126,171,200,0.18)",borderRadius:8,padding:"12px 14px",
+        }}>
+          <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:6}}>AIS Position</div>
+          <div style={{fontFamily:"monospace",fontSize:13,color:"#e8f4f8"}}>
+            {ais.lat.toFixed(5)}° N, {ais.lon.toFixed(5)}° E
+          </div>
+          <a href={`https://www.openstreetmap.org/?mlat=${ais.lat}&mlon=${ais.lon}#map=14/${ais.lat}/${ais.lon}`}
+             target="_blank" rel="noreferrer"
+             style={{fontSize:10,color:"#6ab0e8",letterSpacing:1,textDecoration:"none",marginTop:6,display:"inline-block"}}>
+            Open in map ↗
+          </a>
+          <div style={{fontSize:10,color:"#3a5a6a",marginTop:6}}>
+            MMSI {ais.mmsi}{ais.name ? ` · ${ais.name}` : ""}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
