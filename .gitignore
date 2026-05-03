@@ -8,3 +8,4 @@ node_modules/
 /infra/cerbo-emulator/cerbo-emulator.bin
 
 .playwright-mcp/
+infra/ais-cache/ais-cache
