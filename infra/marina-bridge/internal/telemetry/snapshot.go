@@ -27,6 +27,14 @@ type Snapshot struct {
 	PressureMbar    *float64
 	BoatSpeedKn     *float64
 	LogTotalNm      *float64
+	AcVoltageV      *float64
+	AcCurrentA      *float64
+	AcPowerW        *float64
+	AcEnergyKwhTotal *float64
+	RelayBank1Relay1 *bool
+	RelayBank1Relay2 *bool
+	RelayBank1Relay3 *bool
+	RelayBank1Relay4 *bool
 
 	// Wind (apparent: relative to bow; true: bearing/relative).
 	WindApparentSpeedKn *float64 // 0 .. inf
@@ -64,6 +72,24 @@ func (s *Snapshot) SetDewpointC(v float64)            { s.set(func() { s.Dewpoin
 func (s *Snapshot) SetPressureMbar(v float64)         { s.set(func() { s.PressureMbar = &v }) }
 func (s *Snapshot) SetBoatSpeedKn(v float64)          { s.set(func() { s.BoatSpeedKn = &v }) }
 func (s *Snapshot) SetLogTotalNm(v float64)           { s.set(func() { s.LogTotalNm = &v }) }
+func (s *Snapshot) SetAcVoltageV(v float64)           { s.set(func() { s.AcVoltageV = &v }) }
+func (s *Snapshot) SetAcCurrentA(v float64)           { s.set(func() { s.AcCurrentA = &v }) }
+func (s *Snapshot) SetAcPowerW(v float64)             { s.set(func() { s.AcPowerW = &v }) }
+func (s *Snapshot) SetAcEnergyKwhTotal(v float64)     { s.set(func() { s.AcEnergyKwhTotal = &v }) }
+func (s *Snapshot) SetRelayBank1(idx int, on bool) {
+	s.set(func() {
+		switch idx {
+		case 1:
+			s.RelayBank1Relay1 = &on
+		case 2:
+			s.RelayBank1Relay2 = &on
+		case 3:
+			s.RelayBank1Relay3 = &on
+		case 4:
+			s.RelayBank1Relay4 = &on
+		}
+	})
+}
 func (s *Snapshot) SetWindApparent(speedKn, angleDeg float64) {
 	s.set(func() { s.WindApparentSpeedKn = &speedKn; s.WindApparentAngleDeg = &angleDeg })
 }
@@ -83,6 +109,71 @@ func (s *Snapshot) set(fn func()) {
 	defer s.mu.Unlock()
 	fn()
 	s.LastUpdated = time.Now()
+}
+
+func (s *Snapshot) GetCabinHumidityPct() (float64, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.CabinHumidityPct == nil {
+		return 0, false
+	}
+	return *s.CabinHumidityPct, true
+}
+
+func (s *Snapshot) GetRelayBank1(idx int) (bool, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var p *bool
+	switch idx {
+	case 1:
+		p = s.RelayBank1Relay1
+	case 2:
+		p = s.RelayBank1Relay2
+	case 3:
+		p = s.RelayBank1Relay3
+	case 4:
+		p = s.RelayBank1Relay4
+	}
+	if p == nil {
+		return false, false
+	}
+	return *p, true
+}
+
+// GetNumericField returns selected telemetry fields by scenario key.
+func (s *Snapshot) GetNumericField(field string) (float64, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var p *float64
+	switch field {
+	case "cabin.humidity_pct":
+		p = s.CabinHumidityPct
+	case "cabin.temperature_c":
+		p = s.CabinTempC
+	case "dewpoint_c":
+		p = s.DewpointC
+	case "battery.voltage":
+		p = s.BatteryVoltage
+	case "battery.percent":
+		p = s.BatteryPercent
+	case "water_depth_m":
+		p = s.WaterDepthM
+	case "water_temp_c":
+		p = s.WaterTempC
+	case "bilge.water_cm":
+		p = s.BilgeWaterCm
+	case "ac.power_w":
+		p = s.AcPowerW
+	case "ac.voltage_v":
+		p = s.AcVoltageV
+	default:
+		return 0, false
+	}
+	if p == nil {
+		return 0, false
+	}
+	return *p, true
 }
 
 // MarshalIngest returns the JSON-able map matching the marina schema.
@@ -152,6 +243,38 @@ func (s *Snapshot) MarshalIngest(slug string) map[string]any {
 	}
 	if s.LogTotalNm != nil {
 		out["log_total_nm"] = *s.LogTotalNm
+	}
+	if s.AcVoltageV != nil || s.AcCurrentA != nil || s.AcPowerW != nil || s.AcEnergyKwhTotal != nil {
+		ac := map[string]any{}
+		if s.AcVoltageV != nil {
+			ac["voltage_v"] = *s.AcVoltageV
+		}
+		if s.AcCurrentA != nil {
+			ac["current_a"] = *s.AcCurrentA
+		}
+		if s.AcPowerW != nil {
+			ac["power_w"] = *s.AcPowerW
+		}
+		if s.AcEnergyKwhTotal != nil {
+			ac["energy_kwh_total"] = *s.AcEnergyKwhTotal
+		}
+		out["ac"] = ac
+	}
+	if s.RelayBank1Relay1 != nil || s.RelayBank1Relay2 != nil || s.RelayBank1Relay3 != nil || s.RelayBank1Relay4 != nil {
+		bank1 := map[string]any{}
+		if s.RelayBank1Relay1 != nil {
+			bank1["relay1"] = *s.RelayBank1Relay1
+		}
+		if s.RelayBank1Relay2 != nil {
+			bank1["relay2"] = *s.RelayBank1Relay2
+		}
+		if s.RelayBank1Relay3 != nil {
+			bank1["relay3"] = *s.RelayBank1Relay3
+		}
+		if s.RelayBank1Relay4 != nil {
+			bank1["relay4"] = *s.RelayBank1Relay4
+		}
+		out["relays"] = map[string]any{"bank1": bank1}
 	}
 	if s.WindApparentSpeedKn != nil || s.WindApparentAngleDeg != nil ||
 		s.WindTrueSpeedKn != nil || s.WindTrueAngleDeg != nil || s.WindTrueDirDeg != nil {
