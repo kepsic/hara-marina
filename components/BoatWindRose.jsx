@@ -75,9 +75,15 @@ export default function BoatWindRose({
   const centerMode = centerModeLabel || (num(trueSpeedKn) ? "M/S TRUE" : (hasApparentSpeed ? "M/S APP" : "M/S TRUE"));
   const relLabel = relativeModeLabel || "APP";
 
+  // Body-relative mode: rotate entire rose so boat always points up
+  const isBodyRelative = bow !== null;
+  const rotationDeg = isBodyRelative ? -bow : 0;
+
   // Convert wind bearing FROM to an arrow that points TO the centre.
   function arrow(deg, color, width = 3, length = r - 8, tailOffset = 14) {
-    const [vx, vy] = vec(deg);
+    // If body-relative, adjust the bearing by rotation
+    const bearingDeg = isBodyRelative ? ((deg - rotationDeg) % 360 + 360) % 360 : deg;
+    const [vx, vy] = vec(bearingDeg);
     const tipX = c + vx * tailOffset;
     const tipY = c + vy * tailOffset;
     const tailX = c + vx * length;
@@ -110,9 +116,11 @@ export default function BoatWindRose({
   }
 
   // Bow indicator — small triangle on the rim showing boat heading.
+  // In body-relative mode, always at top; in absolute mode, at boat heading.
   function bowMarker() {
     if (bow === null) return null;
-    const [vx, vy] = vec(bow);
+    const bowDeg = isBodyRelative ? 0 : bow;  // Always top in body-relative
+    const [vx, vy] = vec(bowDeg);
     const tipX = c + vx * (r + 6);
     const tipY = c + vy * (r + 6);
     const baseX = c + vx * (r - 6);
@@ -167,14 +175,15 @@ export default function BoatWindRose({
 
       {/* cardinal labels */}
       {CARDINALS.map(([lbl, deg]) => {
-        const [vx, vy] = vec(deg);
+        const labelDeg = isBodyRelative ? ((deg - rotationDeg) % 360 + 360) % 360 : deg;
+        const [vx, vy] = vec(labelDeg);
         const x = c + vx * (r + 10);
         const y = c + vy * (r + 10) + 3.5;
         return (
           <text key={lbl} x={x} y={y} textAnchor="middle"
             fontSize={lbl.length === 1 ? 11 : 8.5}
             fontWeight="bold" letterSpacing="1"
-            fill={lbl === "N" ? "#f0c040" : "#9ec8e0"}
+            fill={isBodyRelative ? "#7eabc8" : (lbl === "N" ? "#f0c040" : "#9ec8e0")}
             fontFamily="Georgia, serif">{lbl}</text>
         );
       })}
@@ -211,13 +220,29 @@ export default function BoatWindRose({
           AWS {knToMs(apparentSpeedKn).toFixed(1)}
         </text>
       )}
-      {apparentIsRelative && hasApparent && (
+      {isBodyRelative && (
+        <>
+          {hasApparent && (
+            <text x={c} y={c + 34} textAnchor="middle" fontSize="7"
+              fill="rgba(106,212,232,0.75)" letterSpacing="1">
+              AWA {Math.round(apparentAngle)}°
+            </text>
+          )}
+          {hasTrue && (
+            <text x={c} y={hasApparent ? c + 44 : c + 34} textAnchor="middle" fontSize="7"
+              fill="rgba(240,192,64,0.7)" letterSpacing="1">
+              TWA {Math.round(((trueDirDeg - bow) % 360 + 360) % 360)}°
+            </text>
+          )}
+        </>
+      )}
+      {!isBodyRelative && apparentIsRelative && hasApparent && (
         <text x={c} y={c + 34} textAnchor="middle" fontSize="7"
           fill="rgba(106,212,232,0.75)" letterSpacing="1">
           {relLabel} RELATIVE (BOW UP)
         </text>
       )}
-      {hasTrue && (
+      {!isBodyRelative && hasTrue && (
         <text x={c} y={apparentIsRelative && hasApparent ? c + 44 : c + 34} textAnchor="middle" fontSize="7"
           fill="rgba(240,192,64,0.7)" letterSpacing="1">
           FROM {Math.round(trueDirDeg)}°
