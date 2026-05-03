@@ -40,6 +40,12 @@ type config struct {
 	keepaliveGrace  time.Duration
 	publishWithout  bool // emit even if no keepalive seen (for local debug)
 	baseLat, baseLon float64
+
+	// YDWG-02 emulator (synthetic NMEA 2000 over TCP).
+	ydwgEnabled bool
+	ydwgAddr    string
+	ydwgMMSI    uint32
+	ydwgName    string
 }
 
 func envOr(k, def string) string {
@@ -78,6 +84,10 @@ func loadConfig() config {
 		publishWithout: envBool("PUBLISH_WITHOUT_KEEPALIVE", false),
 		baseLat:        59.5916,
 		baseLon:        25.6608,
+		ydwgEnabled:    envBool("YDWG_SIM_ENABLED", false),
+		ydwgAddr:       envOr("YDWG_SIM_ADDR", ":1457"),
+		ydwgMMSI:       parseUint32Env(envOr("YDWG_SIM_MMSI", ""), 276013320),
+		ydwgName:       envOr("YDWG_SIM_NAME", "MOI"),
 	}
 	flag.StringVar(&cfg.broker, "broker", cfg.broker, "MQTT broker URL (tcp://host:1883)")
 	flag.StringVar(&cfg.username, "user", cfg.username, "MQTT username")
@@ -138,6 +148,15 @@ func main() {
 	// Drift state.
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	state := newState(rng, cfg.baseLat, cfg.baseLon)
+
+	// Optional YDWG-02 emulator: serves synthetic N2K (incl. AIS) over TCP
+	// so marina-bridge can decode self-AIS frames in test environments.
+	if cfg.ydwgEnabled {
+		sim := newYdwgSim(cfg.ydwgAddr, cfg.ydwgMMSI, cfg.ydwgName, func() (float64, float64) {
+			return state.lat, state.lon
+		})
+		go sim.run(ctx)
+	}
 
 	ticker := time.NewTicker(cfg.publishPeriod)
 	defer ticker.Stop()
