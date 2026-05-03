@@ -197,16 +197,16 @@ export default function BoatWindRose({
       {/* Bow indicator */}
       {bowMarker()}
 
-      {/* Boat shape at center — pointing north */}
+      {/* Boat shape at center — same design as header */}
       <g>
-        {/* Hull — elegant elliptical shape, top-down view */}
-        <path d={`M ${c},${c - 20} Q ${c + 14},${c - 8} ${c + 14},${c + 4} Q ${c + 14},${c + 16} ${c},${c + 22} Q ${c - 14},${c + 16} ${c - 14},${c + 4} Q ${c - 14},${c - 8} ${c},${c - 20} Z`}
-          fill="rgba(76,140,100,0.75)" stroke="rgba(186,216,196,0.9)" strokeWidth="2"/>
-        {/* Centerline / mast */}
-        <line x1={c} y1={c - 18} x2={c} y2={c + 20}
-          stroke="rgba(186,216,196,0.8)" strokeWidth="2"/>
-        {/* Cabin / wheelhouse — darker circle on the side */}
-        <circle cx={c + 8} cy={c + 2} r="5" fill="rgba(50,100,70,0.7)" stroke="rgba(186,216,196,0.8)" strokeWidth="1.2"/>
+        {/* Hull — scaled from header boat design */}
+        <path d={`M ${c - 102},${c} C ${c - 102},${c} ${c - 54},${c - 36} ${c + 57},${c - 36} L ${c + 108},${c - 15} L ${c + 126},${c} L ${c + 108},${c + 15} L ${c + 57},${c + 36} C ${c - 54},${c + 36} ${c - 102},${c} ${c - 102},${c} Z`}
+          fill="rgba(100,160,120,0.8)" stroke="rgba(186,216,196,0.85)" strokeWidth="1.5"/>
+        {/* Mast line — same from header */}
+        <line x1={c} y1={c - 27} x2={c} y2={c + 27}
+          stroke="rgba(186,216,196,0.8)" strokeWidth="1.5"/>
+        {/* Cabin/wheelhouse — scaled ellipse from header */}
+        <ellipse cx={c + 54} cy={c} rx="27" ry="16.5" fill="rgba(60,100,70,0.7)" stroke="rgba(186,216,196,0.75)" strokeWidth="1"/>
       </g>
 
       {/* Centre readout */}
