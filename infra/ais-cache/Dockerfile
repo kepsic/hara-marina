@@ -1,8 +1,9 @@
+# Built from repo root (Railway sets RAILWAY_DOCKERFILE_PATH=infra/ais-cache/Dockerfile).
 FROM golang:1.24-alpine AS build
 WORKDIR /src
-COPY go.mod go.sum* ./
+COPY infra/ais-cache/go.mod infra/ais-cache/go.sum ./
 RUN go mod download
-COPY . .
+COPY infra/ais-cache/. ./
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/ais-cache .
 
 FROM gcr.io/distroless/static-debian12:nonroot
