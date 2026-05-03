@@ -7,6 +7,13 @@ import {
 } from "../../../lib/auth";
 import { canViewBoat } from "../../../lib/owners";
 import { getTelemetry } from "../../../lib/telemetryStore";
+import { Redis } from "@upstash/redis";
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
+const RELAY_STATE_KEY = (slug) => `relay_state:${slug}`;
 
 export default async function handler(req, res) {
   const { slug } = req.query;
@@ -29,6 +36,21 @@ export default async function handler(req, res) {
   try {
     const live = await getTelemetry(cleanSlug);
     if (live) {
+      let cachedRelays = {};
+      try {
+        const raw = await redis.get(RELAY_STATE_KEY(cleanSlug));
+        cachedRelays = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : {};
+      } catch {}
+
+      const mergedRelays = {
+        ...(cachedRelays || {}),
+        ...((live?.relays?.bank1 && typeof live.relays.bank1 === "object") ? live.relays.bank1 : {}),
+      };
+
+      const relays = Object.keys(mergedRelays).length
+        ? { bank1: mergedRelays }
+        : live.relays;
+
       const last_seen_ago = Math.max(0, Math.floor((Date.now() - (live.ts || Date.now())) / 1000));
       // Compute dew point from Magnus formula if sensor doesn't provide it
       let dewpoint_c = live.dewpoint_c;
@@ -45,6 +67,7 @@ export default async function handler(req, res) {
       return res.status(200).json({
         boat_name: slug,
         ...live,
+        ...(relays ? { relays } : {}),
         ...(dewpoint_c != null ? { dewpoint_c } : {}),
         timestamp: live.ts,
         last_seen_ago,
