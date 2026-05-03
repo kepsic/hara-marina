@@ -350,12 +350,19 @@ func handleBattery(d []byte, snap *telemetry.Snapshot) {
 // d[0]=instance, d[1]=bank, d[2..] packed 2-bit states per channel:
 // 0=Off, 1=On, 2=Error, 3=Unavailable.
 func handleBinarySwitchBankStatus(d []byte, snap *telemetry.Snapshot) {
-	if len(d) < 3 {
+	if len(d) < 2 {
 		return
 	}
-	stateByte := d[2]
+	// Yacht Devices stream puts packed 2-bit channel states starting at d[1].
+	// Sample seen: 01 00 FF FF ... => first channels are OFF.
 	for ch := 1; ch <= 4; ch++ {
-		state := (stateByte >> ((ch - 1) * 2)) & 0x03
+		bit := (ch - 1) * 2
+		idx := 1 + (bit / 8)
+		if idx >= len(d) {
+			break
+		}
+		shift := uint(bit % 8)
+		state := (d[idx] >> shift) & 0x03
 		switch state {
 		case 0:
 			snap.SetRelayBank1(ch, false)
