@@ -13,10 +13,17 @@
 // Supported PGNs:
 //
 //	127508 DC Battery Status              (voltage)
-//	127257 Attitude                        (heel)
+//	127250 Vessel Heading                  (heading)
+//	127257 Attitude                        (heel, pitch)
+//	128259 Speed, Water Referenced         (boat speed)
 //	128267 Water Depth                     (depth)
+//	128275 Distance Log                    (total log)
 //	129025 Position, Rapid Update          (lat, lon)
+//	129026 COG/SOG, Rapid Update           (course/speed over ground)
+//	130306 Wind Data                        (apparent/true wind)
+//	130310 Environmental Parameters         (water/air temp, pressure)
 //	130311 Environmental Parameters        (temperature, humidity)
+//	130312 Temperature                      (sea/air/cabin temperature)
 package ydwg
 
 import (
@@ -24,6 +31,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"strconv"
 	"strings"
@@ -149,6 +157,7 @@ func readFrames(ctx context.Context, conn net.Conn, snap *telemetry.Snapshot, pu
 
 // fastPacketPGNs is the set of PGNs that arrive over multi-frame transport.
 var fastPacketPGNs = map[uint32]bool{
+	128275: true, // Distance Log
 	129038: true, // AIS Class A Position
 	129039: true, // AIS Class B Position
 	129040: true, // AIS Class B Extended Position
@@ -197,7 +206,7 @@ func parseLine(ctx context.Context, line string, snap *telemetry.Snapshot, reasm
 		if !complete {
 			return
 		}
-		dispatchFastPacket(ctx, pgn, payload, names, pusher)
+		dispatchFastPacket(ctx, pgn, payload, names, pusher, snap)
 		return
 	}
 
@@ -208,20 +217,34 @@ func parseLine(ctx context.Context, line string, snap *telemetry.Snapshot, reasm
 	switch pgn {
 	case 127508:
 		handleBattery(data, snap)
+	case 127250:
+		handleHeading(data, snap)
 	case 127257:
 		handleAttitude(data, snap)
+	case 128259:
+		handleBoatSpeed(data, snap)
 	case 128267:
 		handleWaterDepth(data, snap)
 	case 129025:
 		handlePosition(data, snap)
+	case 129026:
+		handleCogSog(data, snap)
+	case 130306:
+		handleWind(data, snap)
+	case 130310:
+		handleEnv130310(data, snap)
 	case 130311:
 		handleEnv(data, snap)
+	case 130312:
+		handleTemp130312(data, snap)
 	}
 }
 
 // dispatchFastPacket routes a fully reassembled multi-frame payload.
-func dispatchFastPacket(ctx context.Context, pgn uint32, payload []byte, names *aisNameCache, pusher *aisingest.Pusher) {
+func dispatchFastPacket(ctx context.Context, pgn uint32, payload []byte, names *aisNameCache, pusher *aisingest.Pusher, snap *telemetry.Snapshot) {
 	switch pgn {
+	case 128275:
+		handleDistanceLog(payload, snap)
 	case 129039, 129038:
 		fix, ok := decodePGN129039(payload, names)
 		if !ok || pusher == nil {
@@ -231,6 +254,20 @@ func dispatchFastPacket(ctx context.Context, pgn uint32, payload []byte, names *
 	case 129809:
 		decodePGN129809(payload, names)
 	}
+}
+
+const mpsToKn = 1.9438444924406
+const radToDeg = 57.29577951308232
+func handleHeading(d []byte, snap *telemetry.Snapshot) {
+	if len(d) < 3 {
+		return
+	}
+	raw := uint16(d[1]) | uint16(d[2])<<8
+	if raw == 0xFFFF {
+		return
+	}
+	deg := math.Mod(float64(raw)*0.0001*radToDeg+360, 360)
+	snap.SetHeadingDeg(deg)
 }
 
 // 29-bit CAN ID → PGN. Per ISO 11783-3.
@@ -264,12 +301,116 @@ func handleAttitude(d []byte, snap *telemetry.Snapshot) {
 	if len(d) < 7 {
 		return
 	}
+	pitch := int16(uint16(d[3]) | uint16(d[4])<<8)
 	roll := int16(uint16(d[5]) | uint16(d[6])<<8)
-	if roll == 0x7FFF {
+	if pitch != 0x7FFF {
+		snap.SetPitchDeg(float64(pitch) * 0.0001 * radToDeg)
+	}
+	if roll != 0x7FFF {
+		snap.SetHeelDeg(float64(roll) * 0.0001 * radToDeg)
+	}
+}
+func handleCogSog(d []byte, snap *telemetry.Snapshot) {
+	if len(d) < 6 {
 		return
 	}
-	const radToDeg = 57.29577951308232
-	snap.SetHeelDeg(float64(roll) * 0.0001 * radToDeg)
+	cogRaw := uint16(d[2]) | uint16(d[3])<<8
+	if cogRaw != 0xFFFF {
+		deg := math.Mod(float64(cogRaw)*0.0001*radToDeg+360, 360)
+		snap.SetCogDeg(deg)
+	}
+	sogRaw := uint16(d[4]) | uint16(d[5])<<8
+	if sogRaw != 0xFFFF {
+		mps := float64(sogRaw) * 0.01
+		snap.SetSogKn(mps * mpsToKn)
+	}
+}
+
+func signedAngleDeg(deg float64) float64 {
+	for deg > 180 {
+		deg -= 360
+	}
+	for deg <= -180 {
+		deg += 360
+	}
+	return deg
+}
+
+// PGN 130306: Wind Data.
+// d[1..2] = speed (0.01 m/s), d[3..4] = angle (1e-4 rad), d[5] = reference.
+// Reference: 0=true (north), 2=apparent (relative), 3=true (water, relative).
+func handleWind(d []byte, snap *telemetry.Snapshot) {
+	if len(d) < 6 {
+		return
+	}
+	sRaw := uint16(d[1]) | uint16(d[2])<<8
+	aRaw := uint16(d[3]) | uint16(d[4])<<8
+	if sRaw == 0xFFFF || aRaw == 0xFFFF {
+		return
+	}
+	speedKn := float64(sRaw) * 0.01 * mpsToKn
+	deg := math.Mod(float64(aRaw)*0.0001*radToDeg+360, 360)
+	ref := d[5] & 0x07
+	switch ref {
+	case 0:
+		snap.SetWindTrueDirection(deg)
+	case 2:
+		snap.SetWindApparent(speedKn, signedAngleDeg(deg))
+	case 3:
+		snap.SetWindTrueRelative(speedKn, signedAngleDeg(deg))
+	}
+}
+
+// PGN 130310: Environmental Parameters.
+// d[1] = temperature source, d[2..3] = temperature (0.01 K), d[6..7] = pressure (100 Pa)
+func handleEnv130310(d []byte, snap *telemetry.Snapshot) {
+	if len(d) < 4 {
+		return
+	}
+	source := d[1] & 0x3F
+	tRaw := uint16(d[2]) | uint16(d[3])<<8
+	if tRaw != 0xFFFF {
+		tC := float64(tRaw)*0.01 - 273.15
+		switch source {
+		case 0:
+			snap.SetWaterTempC(tC)
+		case 1, 2:
+			snap.SetAirTempC(tC)
+		case 4:
+			snap.SetCabinTempC(tC)
+		}
+	}
+	if len(d) >= 8 {
+		pRaw := uint16(d[6]) | uint16(d[7])<<8
+		if pRaw != 0xFFFF {
+			// 100 Pa units -> mbar/hPa
+			snap.SetPressureMbar(float64(pRaw))
+		}
+	}
+}
+
+// PGN 130312: Temperature.
+// d[0]=SID, d[1]=instance, d[2]=source, d[3..4]=actual temp (0.01 K, uint16 LE)
+func handleTemp130312(d []byte, snap *telemetry.Snapshot) {
+	if len(d) < 5 {
+		return
+	}
+	source := d[2] & 0x3F
+	tRaw := uint16(d[3]) | uint16(d[4])<<8
+	if tRaw == 0xFFFF {
+		return
+	}
+	tC := float64(tRaw)*0.01 - 273.15
+	switch source {
+	case 0:
+		snap.SetWaterTempC(tC)
+	case 1, 2:
+		snap.SetAirTempC(tC)
+	case 4:
+		snap.SetCabinTempC(tC)
+	case 9:
+		snap.SetDewpointC(tC)
+	}
 }
 
 // PGN 128267: Water Depth — depth in 0.01 m (uint32 LE) at offset 1.
@@ -283,6 +424,48 @@ func handleWaterDepth(d []byte, snap *telemetry.Snapshot) {
 		return
 	}
 	snap.SetWaterDepthM(float64(raw) * 0.01)
+}
+
+// PGN 128259: Speed, Water Referenced.
+// d[0] = SID, d[1..2] = speed water-referenced (0.01 m/s, uint16 LE)
+func handleBoatSpeed(d []byte, snap *telemetry.Snapshot) {
+	if len(d) < 3 {
+		return
+	}
+	raw := uint16(d[1]) | uint16(d[2])<<8
+	if raw == 0xFFFF {
+		return
+	}
+	mps := float64(raw) * 0.01
+	snap.SetBoatSpeedKn(mps * mpsToKn)
+}
+
+// PGN 128275: Distance Log (fast-packet payload).
+// Two payload layouts are observed from YD gateways:
+//   compact (len ~11): total log at p[6..9] (metres)
+//   extended (len >=15): total log at p[11..14] (metres)
+// Legacy decoders used p[7..10], which produces inflated values.
+func handleDistanceLog(p []byte, snap *telemetry.Snapshot) {
+	if len(p) < 10 {
+		return
+	}
+	idx := 6
+	if len(p) >= 15 {
+		idx = 11
+	} else if len(p) >= 11 {
+		// Backward-compat fallback for older senders if compact decode is invalid.
+		rawCompact := uint32(p[6]) | uint32(p[7])<<8 | uint32(p[8])<<16 | uint32(p[9])<<24
+		nmCompact := float64(rawCompact) / 1852.0
+		if nmCompact <= 0 || nmCompact > 50000 {
+			idx = 7
+		}
+	}
+	raw := uint32(p[idx]) | uint32(p[idx+1])<<8 | uint32(p[idx+2])<<16 | uint32(p[idx+3])<<24
+	if raw == 0xFFFFFFFF {
+		return
+	}
+	nm := float64(raw) / 1852.0
+	snap.SetLogTotalNm(nm)
 }
 
 // PGN 129025: Position, Rapid Update — lat/lon as int32 LE in 1e-7 deg
