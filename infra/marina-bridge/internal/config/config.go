@@ -26,9 +26,11 @@ type Config struct {
 }
 
 type CerboConfig struct {
-	Enabled bool   `yaml:"enabled"`
-	Broker  string `yaml:"broker"`
-	VrmID   string `yaml:"vrm_id"`
+	Enabled  bool   `yaml:"enabled"`
+	Broker   string `yaml:"broker"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+	VrmID    string `yaml:"vrm_id"`
 }
 
 type YdwgConfig struct {
@@ -94,6 +96,12 @@ func applyEnv(c *Config) {
 	}
 	if v := os.Getenv("CERBO_BROKER"); v != "" {
 		c.Sources.Cerbo.Broker = v
+	}
+	if v := os.Getenv("CERBO_USERNAME"); v != "" {
+		c.Sources.Cerbo.Username = v
+	}
+	if v := os.Getenv("CERBO_PASSWORD"); v != "" {
+		c.Sources.Cerbo.Password = v
 	}
 	if v := os.Getenv("CERBO_VRM_ID"); v != "" {
 		c.Sources.Cerbo.VrmID = v

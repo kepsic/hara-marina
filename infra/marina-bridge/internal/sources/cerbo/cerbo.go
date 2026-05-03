@@ -76,6 +76,8 @@ func Run(ctx context.Context, cfg config.CerboConfig, snap *telemetry.Snapshot) 
 	opts := mqtt.NewClientOptions().
 		AddBroker(cfg.Broker).
 		SetClientID(fmt.Sprintf("marina-bridge-cerbo-%d", time.Now().UnixNano())).
+		SetUsername(cfg.Username).
+		SetPassword(cfg.Password).
 		SetAutoReconnect(true).
 		SetConnectRetry(true).
 		SetConnectRetryInterval(5 * time.Second).
