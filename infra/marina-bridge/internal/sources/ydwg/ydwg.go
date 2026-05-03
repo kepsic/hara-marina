@@ -29,16 +29,20 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kepsic/hara-marina/marina-bridge/internal/aisingest"
 	"github.com/kepsic/hara-marina/marina-bridge/internal/config"
 	"github.com/kepsic/hara-marina/marina-bridge/internal/telemetry"
 )
 
-func Run(ctx context.Context, cfg config.YdwgConfig, snap *telemetry.Snapshot) error {
+// Run reads RAW frames from a YDWG-02 / YDEN-02 gateway over TCP. The optional
+// pusher (may be nil) receives decoded AIS Class B position fixes from any
+// transponder on the boat's N2K bus (e.g. em-trak B924).
+func Run(ctx context.Context, cfg config.YdwgConfig, snap *telemetry.Snapshot, pusher *aisingest.Pusher) error {
 	for {
 		if ctx.Err() != nil {
 			return nil
 		}
-		if err := runOnce(ctx, cfg.Address, snap); err != nil {
+		if err := runOnce(ctx, cfg.Address, snap, pusher); err != nil {
 			log.Printf("[ydwg] %v — reconnecting in 5s", err)
 			select {
 			case <-ctx.Done():
@@ -49,7 +53,7 @@ func Run(ctx context.Context, cfg config.YdwgConfig, snap *telemetry.Snapshot) e
 	}
 }
 
-func runOnce(ctx context.Context, addr string, snap *telemetry.Snapshot) error {
+func runOnce(ctx context.Context, addr string, snap *telemetry.Snapshot, pusher *aisingest.Pusher) error {
 	d := net.Dialer{Timeout: 10 * time.Second}
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
@@ -60,16 +64,30 @@ func runOnce(ctx context.Context, addr string, snap *telemetry.Snapshot) error {
 
 	go func() { <-ctx.Done(); conn.Close() }()
 
+	reasm := newFastPacketReassembler()
+	names := newAisNameCache()
+
 	sc := bufio.NewScanner(conn)
 	sc.Buffer(make([]byte, 0, 1024), 64*1024)
 	for sc.Scan() {
-		parseLine(sc.Text(), snap)
+		parseLine(ctx, sc.Text(), snap, reasm, names, pusher)
 	}
 	return sc.Err()
 }
 
+// fastPacketPGNs is the set of PGNs that arrive over multi-frame transport.
+var fastPacketPGNs = map[uint32]bool{
+	129038: true, // AIS Class A Position
+	129039: true, // AIS Class B Position
+	129040: true, // AIS Class B Extended Position
+	129793: true, // AIS UTC and Date Report
+	129794: true, // AIS Class A Static
+	129809: true, // AIS Class B Static, Part A (Name)
+	129810: true, // AIS Class B Static, Part B (Type, Callsign)
+}
+
 // parseLine parses one RAW frame. Lines that don't match are silently dropped.
-func parseLine(line string, snap *telemetry.Snapshot) {
+func parseLine(ctx context.Context, line string, snap *telemetry.Snapshot, reasm *fastPacketReassembler, names *aisNameCache, pusher *aisingest.Pusher) {
 	parts := strings.Fields(strings.TrimSpace(line))
 	if len(parts) < 4 {
 		return
@@ -84,6 +102,7 @@ func parseLine(line string, snap *telemetry.Snapshot) {
 		return
 	}
 	pgn := pgnFromCanID(uint32(canID))
+	srcAddr := uint8(canID & 0xFF)
 
 	data := make([]byte, 0, 8)
 	for _, h := range parts[3:] {
@@ -96,6 +115,20 @@ func parseLine(line string, snap *telemetry.Snapshot) {
 		}
 		data = append(data, byte(b))
 	}
+	if len(data) < 1 {
+		return
+	}
+
+	// Fast-packet PGNs (AIS et al.) need multi-frame reassembly.
+	if fastPacketPGNs[pgn] {
+		payload, complete := reasm.feed(srcAddr, pgn, data)
+		if !complete {
+			return
+		}
+		dispatchFastPacket(ctx, pgn, payload, names, pusher)
+		return
+	}
+
 	if len(data) < 4 {
 		return
 	}
@@ -111,6 +144,20 @@ func parseLine(line string, snap *telemetry.Snapshot) {
 		handlePosition(data, snap)
 	case 130311:
 		handleEnv(data, snap)
+	}
+}
+
+// dispatchFastPacket routes a fully reassembled multi-frame payload.
+func dispatchFastPacket(ctx context.Context, pgn uint32, payload []byte, names *aisNameCache, pusher *aisingest.Pusher) {
+	switch pgn {
+	case 129039, 129038:
+		fix, ok := decodePGN129039(payload, names)
+		if !ok || pusher == nil {
+			return
+		}
+		pusher.Push(ctx, fix)
+	case 129809:
+		decodePGN129809(payload, names)
 	}
 }
 

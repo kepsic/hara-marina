@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/kepsic/hara-marina/marina-bridge/internal/aisingest"
 	"github.com/kepsic/hara-marina/marina-bridge/internal/config"
 	"github.com/kepsic/hara-marina/marina-bridge/internal/marina"
 	"github.com/kepsic/hara-marina/marina-bridge/internal/sources/cerbo"
@@ -34,6 +35,13 @@ func main() {
 
 	snap := &telemetry.Snapshot{}
 
+	// AIS pusher: forwards decoded N2K AIS fixes (em-trak / Class B) from the
+	// boat's own bus to the central ais-cache. Returns nil when disabled.
+	aisPusher := aisingest.NewPusher(cfg.AisIngest)
+	if aisPusher != nil {
+		log.Printf("[bridge] AIS ingest enabled → %s mmsi=%s", cfg.AisIngest.URL, cfg.AisIngest.MMSI)
+	}
+
 	// --- start sources ---
 	if cfg.Sources.Cerbo.Enabled {
 		go func() {
@@ -44,7 +52,7 @@ func main() {
 	}
 	if cfg.Sources.Ydwg.Enabled {
 		go func() {
-			if err := ydwg.Run(ctx, cfg.Sources.Ydwg, snap); err != nil {
+			if err := ydwg.Run(ctx, cfg.Sources.Ydwg, snap, aisPusher); err != nil {
 				log.Printf("[ydwg] exited: %v", err)
 			}
 		}()

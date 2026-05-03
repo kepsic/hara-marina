@@ -23,6 +23,20 @@ type Config struct {
 		Cerbo CerboConfig `yaml:"cerbo"`
 		Ydwg  YdwgConfig  `yaml:"ydwg"`
 	} `yaml:"sources"`
+
+	AisIngest AisIngestConfig `yaml:"ais_ingest"`
+}
+
+// AisIngestConfig: when enabled, every AIS position decoded from the boat's
+// own NMEA 2000 bus (via YDWG) is POSTed to the central ais-cache service.
+// This bypasses AISStream entirely so we capture our own boat regardless of
+// shore-receiver coverage.
+type AisIngestConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	URL     string `yaml:"url"`   // e.g. https://ais-cache-production.up.railway.app
+	Token   string `yaml:"token"` // bearer token for the cache service
+	MMSI    string `yaml:"mmsi"`  // this boat's MMSI; used as fallback if not in N2K frame
+	Name    string `yaml:"name"`  // optional friendly name forwarded to cache
 }
 
 type CerboConfig struct {
@@ -111,5 +125,20 @@ func applyEnv(c *Config) {
 	}
 	if v := os.Getenv("YDWG_ADDRESS"); v != "" {
 		c.Sources.Ydwg.Address = v
+	}
+	if v := os.Getenv("AIS_INGEST_ENABLED"); v == "true" || v == "1" {
+		c.AisIngest.Enabled = true
+	}
+	if v := os.Getenv("AIS_INGEST_URL"); v != "" {
+		c.AisIngest.URL = v
+	}
+	if v := os.Getenv("AIS_INGEST_TOKEN"); v != "" {
+		c.AisIngest.Token = v
+	}
+	if v := os.Getenv("AIS_INGEST_MMSI"); v != "" {
+		c.AisIngest.MMSI = v
+	}
+	if v := os.Getenv("AIS_INGEST_NAME"); v != "" {
+		c.AisIngest.Name = v
 	}
 }

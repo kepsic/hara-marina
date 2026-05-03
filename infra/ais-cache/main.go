@@ -8,8 +8,13 @@
 //       GET  /api/v1/snapshot?mmsi=NNN
 //       GET  /api/v1/snapshots?mmsi=A,B,C
 //       GET  /api/v1/bbox?lat1=..&lon1=..&lat2=..&lon2=..
+//       GET  /api/v1/track?mmsi=NNN&since=ms&limit=N
+//       GET  /api/v1/trips?mmsi=NNN&since=ms
+//       GET  /api/v1/summary?mmsi=NNN&days=N
 //       GET  /api/v1/stream?mmsi=A,B  (SSE)
 //       GET  /api/v1/stats
+//       POST /api/v1/ingest  (bearer-auth, accepts a Snapshot from off-stream sources
+//                              such as the boat's own marina-bridge)
 //
 // Auth: optional bearer token via HTTP_AUTH_TOKEN env var.
 
@@ -48,7 +53,8 @@ type Snapshot struct {
 	Name      string  `json:"name,omitempty"`
 	Type      int     `json:"type,omitempty"`
 	Dest      string  `json:"destination,omitempty"`
-	TS        int64   `json:"ts"` // ms epoch
+	Source    string  `json:"source,omitempty"` // "aisstream" | "self" | "marina-bridge"
+	TS        int64   `json:"ts"`               // ms epoch
 }
 
 type aisMessage struct {
@@ -457,7 +463,7 @@ func (u *Upstash) PutSnapshot(ctx context.Context, snap Snapshot) {
 
 // ---------- HTTP API ----------
 
-func newServer(cfg *Config, store *Store, tracks *TrackStore) http.Handler {
+func newServer(cfg *Config, store *Store, tracks *TrackStore, mirror *Upstash) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -608,6 +614,55 @@ func newServer(cfg *Config, store *Store, tracks *TrackStore) http.Handler {
 		}, 200)
 	}))
 
+	// POST /api/v1/ingest accepts a Snapshot from off-AISStream sources
+	// (e.g. a boat's own marina-bridge decoding her em-trak transponder
+	// on NMEA 2000). Bearer auth required when HTTP_AUTH_TOKEN is set.
+	mux.HandleFunc("/api/v1/ingest", auth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST required", http.StatusMethodNotAllowed)
+			return
+		}
+		body, err := io.ReadAll(io.LimitReader(r.Body, 32*1024))
+		if err != nil {
+			http.Error(w, "read body: "+err.Error(), 400)
+			return
+		}
+		defer r.Body.Close()
+		var snap Snapshot
+		if err := json.Unmarshal(body, &snap); err != nil {
+			http.Error(w, "invalid json", 400)
+			return
+		}
+		snap.MMSI = strings.TrimSpace(snap.MMSI)
+		if snap.MMSI == "" {
+			http.Error(w, "mmsi required", 400)
+			return
+		}
+		if !math.IsNaN(snap.Lat) && !math.IsNaN(snap.Lon) && (snap.Lat != 0 || snap.Lon != 0) {
+			if snap.TS == 0 {
+				snap.TS = time.Now().UnixMilli()
+			}
+			if snap.Source == "" {
+				snap.Source = "self"
+			}
+			store.Put(snap)
+			tp := TrackPoint{Lat: snap.Lat, Lon: snap.Lon, Sog: snap.Sog, Cog: snap.Cog, TS: snap.TS}
+			if tracks.Append(snap.MMSI, tp) && mirror != nil {
+				go mirror.AppendTrack(r.Context(), snap.MMSI, tp, cfg.TrackMaxPoints, cfg.TrackMaxAgeDay)
+			}
+			if mirror != nil {
+				go mirror.PutSnapshot(r.Context(), snap)
+			}
+		} else if snap.Name != "" || snap.Dest != "" || snap.Type != 0 {
+			// static-only ingest
+			store.PatchStatic(snap.MMSI, snap.Name, snap.Dest, snap.Type)
+		} else {
+			http.Error(w, "lat/lon or static fields required", 400)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "mmsi": snap.MMSI}, 200)
+	}))
+
 	return mux
 }
 
@@ -720,7 +775,7 @@ func main() {
 	log.Printf("ais-cache listening on :%s", cfg.Port)
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           newServer(cfg, store, tracks),
+		Handler:           newServer(cfg, store, tracks, mirror),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
