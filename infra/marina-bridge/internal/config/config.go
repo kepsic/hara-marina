@@ -50,9 +50,20 @@ type CerboConfig struct {
 	VrmID    string `yaml:"vrm_id"`
 }
 
+// YdwgConfig: receive RAW NMEA 2000 frames from a Yacht Devices gateway
+// (YDWG-02 / YDEN-02 / YDNR-02 Server #2 in TCP/RAW mode).
+//
+// Two transport modes:
+//
+//	client (default): bridge dials Address and reads frames
+//	server:           bridge LISTENS on Listen and accepts the gateway's
+//	                  outgoing connection (use YDNR "Enable the outgoing
+//	                  connection" with Server #2 set to TCP/RAW)
 type YdwgConfig struct {
 	Enabled bool   `yaml:"enabled"`
-	Address string `yaml:"address"`
+	Mode    string `yaml:"mode"`    // client|server (default client)
+	Address string `yaml:"address"` // host:port for client mode
+	Listen  string `yaml:"listen"`  // host:port for server mode (e.g. :1457)
 }
 
 // N0183Config: read NMEA 0183 sentences from a TCP server (line-oriented,
@@ -107,8 +118,22 @@ func Load(path string) (*Config, error) {
 	if c.Sources.Cerbo.Enabled && c.Sources.Cerbo.Broker == "" {
 		return nil, fmt.Errorf("cerbo source requires broker (vrm_id may be empty or \"auto\")")
 	}
-	if c.Sources.Ydwg.Enabled && c.Sources.Ydwg.Address == "" {
-		return nil, fmt.Errorf("ydwg source requires address")
+	if c.Sources.Ydwg.Enabled {
+		if c.Sources.Ydwg.Mode == "" {
+			c.Sources.Ydwg.Mode = "client"
+		}
+		switch c.Sources.Ydwg.Mode {
+		case "client":
+			if c.Sources.Ydwg.Address == "" {
+				return nil, fmt.Errorf("ydwg client mode requires address")
+			}
+		case "server":
+			if c.Sources.Ydwg.Listen == "" {
+				return nil, fmt.Errorf("ydwg server mode requires listen address")
+			}
+		default:
+			return nil, fmt.Errorf("ydwg.mode must be client or server (got %q)", c.Sources.Ydwg.Mode)
+		}
 	}
 	if c.Sources.N0183.Enabled && c.Sources.N0183.Address == "" {
 		return nil, fmt.Errorf("n0183 source requires address")
@@ -174,8 +199,14 @@ func applyEnv(c *Config) {
 	if v := os.Getenv("YDWG_ENABLED"); v == "true" || v == "1" {
 		c.Sources.Ydwg.Enabled = true
 	}
+	if v := os.Getenv("YDWG_MODE"); v != "" {
+		c.Sources.Ydwg.Mode = v
+	}
 	if v := os.Getenv("YDWG_ADDRESS"); v != "" {
 		c.Sources.Ydwg.Address = v
+	}
+	if v := os.Getenv("YDWG_LISTEN"); v != "" {
+		c.Sources.Ydwg.Listen = v
 	}
 	if v := os.Getenv("N0183_ENABLED"); v == "true" || v == "1" {
 		c.Sources.N0183.Enabled = true

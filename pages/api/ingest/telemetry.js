@@ -63,8 +63,37 @@ function clean(payload) {
     };
   }
   if (payload.shore_power !== undefined) out.shore_power = !!payload.shore_power;
-  if (num(payload.heel_deg) !== undefined) out.heel_deg = num(payload.heel_deg);
-  if (num(payload.water_depth_m) !== undefined) out.water_depth_m = num(payload.water_depth_m);
+  const passthrough = [
+    "heel_deg",
+    "pitch_deg",
+    "water_depth_m",
+    "water_temp_c",
+    "air_temp_c",
+    "dewpoint_c",
+    "pressure_mbar",
+    "boat_speed_kn",
+    "log_total_nm",
+  ];
+  for (const k of passthrough) {
+    if (num(payload[k]) !== undefined) out[k] = num(payload[k]);
+  }
+  if (payload.wind && typeof payload.wind === "object") {
+    const wind = {};
+    if (payload.wind.apparent && typeof payload.wind.apparent === "object") {
+      const a = {};
+      if (num(payload.wind.apparent.speed_kn) !== undefined) a.speed_kn = num(payload.wind.apparent.speed_kn);
+      if (num(payload.wind.apparent.angle_deg) !== undefined) a.angle_deg = num(payload.wind.apparent.angle_deg);
+      if (Object.keys(a).length) wind.apparent = a;
+    }
+    if (payload.wind.true && typeof payload.wind.true === "object") {
+      const t = {};
+      if (num(payload.wind.true.speed_kn) !== undefined) t.speed_kn = num(payload.wind.true.speed_kn);
+      if (num(payload.wind.true.angle_deg) !== undefined) t.angle_deg = num(payload.wind.true.angle_deg);
+      if (num(payload.wind.true.direction_deg) !== undefined) t.direction_deg = num(payload.wind.true.direction_deg);
+      if (Object.keys(t).length) wind.true = t;
+    }
+    if (Object.keys(wind).length) out.wind = wind;
+  }
   return out;
 }
 

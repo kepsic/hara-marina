@@ -9,9 +9,16 @@
 //
 //	$**DPT  Depth of water below transducer
 //	$**DBT  Depth below transducer (alt encoding)
+//	$**DBS  Depth below surface
 //	$**MTW  Water temperature
+//	$**MDA  Meteorological composite (pressure, air temp, dewpoint, wind)
+//	$**MWD  Wind direction (true compass bearing)
+//	$**MWV  Wind speed and angle (apparent or true, relative to bow)
+//	$**VWR  Apparent wind, relative to bow (with L/R indicator)
+//	$**VWT  True wind, relative to bow (with L/R indicator)
+//	$**VHW  Water speed and heading
+//	$**VLW  Distance through water (total + trip)
 //	$**XDR  Transducer measurement (temperature, humidity, pitch, roll)
-//	$**MWV  Wind speed and angle
 //	$**RMC  Recommended Minimum (lat/lon, fallback)
 //	$**GLL  Geographic position (lat/lon, alt)
 //
@@ -94,12 +101,26 @@ func parseSentence(raw string, snap *telemetry.Snapshot) {
 		handleDPT(fields[1:], snap)
 	case "DBT":
 		handleDBT(fields[1:], snap)
+	case "DBS":
+		handleDBS(fields[1:], snap)
 	case "MTW":
 		handleMTW(fields[1:], snap)
-	case "XDR":
-		handleXDR(fields[1:], snap)
+	case "MDA":
+		handleMDA(fields[1:], snap)
+	case "MWD":
+		handleMWD(fields[1:], snap)
 	case "MWV":
 		handleMWV(fields[1:], snap)
+	case "VWR":
+		handleVWR(fields[1:], snap)
+	case "VWT":
+		handleVWT(fields[1:], snap)
+	case "VHW":
+		handleVHW(fields[1:], snap)
+	case "VLW":
+		handleVLW(fields[1:], snap)
+	case "XDR":
+		handleXDR(fields[1:], snap)
 	case "RMC":
 		handleRMC(fields[1:], snap)
 	case "GLL":
@@ -126,12 +147,56 @@ func handleDBT(f []string, snap *telemetry.Snapshot) {
 	}
 }
 
-// $**MTW,temp,C
+// $**DBS,feet,f,meters,M,fathoms,F  (depth below surface; same shape as DBT)
+func handleDBS(f []string, snap *telemetry.Snapshot) {
+	// We don't currently distinguish "below surface" from "below transducer";
+	// DPT/DBT already populate water_depth_m. Ignore to avoid clobber.
+	_ = f
+	_ = snap
+}
+
+// $**MTW,temp,C — sea water temperature.
 func handleMTW(f []string, snap *telemetry.Snapshot) {
 	if len(f) >= 1 {
-		if _, ok := parseFloat(f[0]); ok {
-			// We don't store sea temperature on the marina schema yet;
-			// it's surfaced via XDR (Sea_T) below for compatibility.
+		if v, ok := parseFloat(f[0]); ok {
+			snap.SetWaterTempC(v)
+		}
+	}
+}
+
+// $**MDA,baroIn,I,baroBar,B,airT,C,waterT,C,relHum,absHum,dewT,C,windDirT,T,windDirM,M,windKn,N,windM,M
+//
+// Most fields are routinely empty on YDNR; we extract what's present.
+func handleMDA(f []string, snap *telemetry.Snapshot) {
+	if len(f) >= 4 {
+		if v, ok := parseFloat(f[2]); ok {
+			// pressure in bar -> mbar
+			snap.SetPressureMbar(v * 1000)
+		}
+	}
+	if len(f) >= 6 {
+		if v, ok := parseFloat(f[4]); ok {
+			snap.SetAirTempC(v)
+		}
+	}
+	if len(f) >= 8 {
+		if v, ok := parseFloat(f[6]); ok {
+			snap.SetWaterTempC(v)
+		}
+	}
+	if len(f) >= 12 {
+		if v, ok := parseFloat(f[10]); ok {
+			snap.SetDewpointC(v)
+		}
+	}
+	// Wind dir/speed in MDA also surface via MWD; skip here to avoid double-write.
+}
+
+// $**MWD,dirT,T,dirM,M,speedKn,N,speedMs,M — true wind direction (compass).
+func handleMWD(f []string, snap *telemetry.Snapshot) {
+	if len(f) >= 1 {
+		if v, ok := parseFloat(f[0]); ok {
+			snap.SetWindTrueDirection(v)
 		}
 	}
 }
@@ -154,18 +219,111 @@ func handleXDR(f []string, snap *telemetry.Snapshot) {
 			snap.SetCabinTempC(val)
 		case strings.EqualFold(name, "ENV_INSIDE_H"):
 			snap.SetCabinHumidityPct(val)
+		case strings.EqualFold(name, "Sea_T"):
+			snap.SetWaterTempC(val)
 		case strings.EqualFold(name, "Roll"):
 			snap.SetHeelDeg(val)
+		case strings.EqualFold(name, "Pitch"):
+			snap.SetPitchDeg(val)
 		}
 	}
 }
 
 // $**MWV,angle,reference,speed,units,status
-// reference: R=relative, T=true; units: K=km/h, N=kn, M=m/s
+//
+// reference: R=relative-to-bow (apparent), T=true-relative-to-bow
+// units: K=km/h, N=kn, M=m/s
+//
+// Angle is 0..360 measured clockwise from bow. We normalise to -180..180
+// (positive=starboard / negative=port) for symmetry with VWR/VWT.
 func handleMWV(f []string, snap *telemetry.Snapshot) {
-	_ = f
-	_ = snap
-	// Wind isn't on the marina schema yet; placeholder for future expansion.
+	if len(f) < 5 || f[4] != "A" {
+		return
+	}
+	angle, ok := parseFloat(f[0])
+	if !ok {
+		return
+	}
+	speed, ok := parseFloat(f[2])
+	if !ok {
+		return
+	}
+	speedKn := convertSpeedToKn(speed, f[3])
+	signed := angle
+	if signed > 180 {
+		signed -= 360
+	}
+	switch f[1] {
+	case "R":
+		snap.SetWindApparent(speedKn, signed)
+	case "T":
+		snap.SetWindTrueRelative(speedKn, signed)
+	}
+}
+
+// $**VWR,angle,L|R,kn,N,m/s,M,kmh,K — apparent wind, relative to bow.
+func handleVWR(f []string, snap *telemetry.Snapshot) {
+	if len(f) < 4 {
+		return
+	}
+	angle, ok := parseFloat(f[0])
+	if !ok {
+		return
+	}
+	if f[1] == "L" {
+		angle = -angle
+	}
+	if v, ok := parseFloat(f[2]); ok {
+		snap.SetWindApparent(v, angle)
+	}
+}
+
+// $**VWT,angle,L|R,kn,N,m/s,M,kmh,K — true wind, relative to bow.
+func handleVWT(f []string, snap *telemetry.Snapshot) {
+	if len(f) < 4 {
+		return
+	}
+	angle, ok := parseFloat(f[0])
+	if !ok {
+		return
+	}
+	if f[1] == "L" {
+		angle = -angle
+	}
+	if v, ok := parseFloat(f[2]); ok {
+		snap.SetWindTrueRelative(v, angle)
+	}
+}
+
+// $**VHW,headingT,T,headingM,M,speedKn,N,speedKmh,K — water speed.
+func handleVHW(f []string, snap *telemetry.Snapshot) {
+	if len(f) >= 5 {
+		if v, ok := parseFloat(f[4]); ok {
+			snap.SetBoatSpeedKn(v)
+		}
+	}
+}
+
+// $**VLW,totalNm,N,tripNm,N — distance through water.
+func handleVLW(f []string, snap *telemetry.Snapshot) {
+	if len(f) >= 1 {
+		if v, ok := parseFloat(f[0]); ok {
+			snap.SetLogTotalNm(v)
+		}
+	}
+}
+
+// convertSpeedToKn handles the unit suffix from MWV (K|N|M).
+func convertSpeedToKn(v float64, unit string) float64 {
+	switch unit {
+	case "N":
+		return v
+	case "K":
+		return v / 1.852 // km/h -> kn
+	case "M":
+		return v * 1.943844 // m/s -> kn
+	}
+	return v
 }
 
 // $**RMC,utc,status,lat,N/S,lon,E/W,sog,cog,date,...

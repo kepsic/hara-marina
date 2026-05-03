@@ -27,6 +27,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kepsic/hara-marina/marina-bridge/internal/aisingest"
@@ -34,15 +35,29 @@ import (
 	"github.com/kepsic/hara-marina/marina-bridge/internal/telemetry"
 )
 
-// Run reads RAW frames from a YDWG-02 / YDEN-02 gateway over TCP. The optional
-// pusher (may be nil) receives decoded AIS Class B position fixes from any
-// transponder on the boat's N2K bus (e.g. em-trak B924).
+// Run reads RAW frames from a YDWG-02 / YDEN-02 / YDNR-02 gateway over TCP.
+// Two modes:
+//
+//	client (default): bridge dials cfg.Address.
+//	server:           bridge LISTENS on cfg.Listen and accepts the gateway's
+//	                  outbound connection ("Enable the outgoing connection"
+//	                  on YDNR with Server #2 in TCP/RAW mode).
+//
+// The optional pusher (may be nil) receives decoded AIS Class B position fixes
+// from any transponder on the boat's N2K bus (e.g. em-trak B924).
 func Run(ctx context.Context, cfg config.YdwgConfig, snap *telemetry.Snapshot, pusher *aisingest.Pusher) error {
+	mode := cfg.Mode
+	if mode == "" {
+		mode = "client"
+	}
+	if mode == "server" {
+		return runServer(ctx, cfg.Listen, snap, pusher)
+	}
 	for {
 		if ctx.Err() != nil {
 			return nil
 		}
-		if err := runOnce(ctx, cfg.Address, snap, pusher); err != nil {
+		if err := runClient(ctx, cfg.Address, snap, pusher); err != nil {
 			log.Printf("[ydwg] %v — reconnecting in 5s", err)
 			select {
 			case <-ctx.Done():
@@ -53,7 +68,7 @@ func Run(ctx context.Context, cfg config.YdwgConfig, snap *telemetry.Snapshot, p
 	}
 }
 
-func runOnce(ctx context.Context, addr string, snap *telemetry.Snapshot, pusher *aisingest.Pusher) error {
+func runClient(ctx context.Context, addr string, snap *telemetry.Snapshot, pusher *aisingest.Pusher) error {
 	d := net.Dialer{Timeout: 10 * time.Second}
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
@@ -64,6 +79,63 @@ func runOnce(ctx context.Context, addr string, snap *telemetry.Snapshot, pusher 
 
 	go func() { <-ctx.Done(); conn.Close() }()
 
+	return readFrames(ctx, conn, snap, pusher)
+}
+
+// runServer listens on listen and serves YDNR's outbound connections one at a
+// time. YDNR opens a single TCP connection and streams RAW frames; if it drops
+// we accept the next one. Old connections are torn down so we never have two
+// streams interleaving.
+func runServer(ctx context.Context, listen string, snap *telemetry.Snapshot, pusher *aisingest.Pusher) error {
+	var lc net.ListenConfig
+	ln, err := lc.Listen(ctx, "tcp", listen)
+	if err != nil {
+		return fmt.Errorf("listen %s: %w", listen, err)
+	}
+	defer ln.Close()
+	log.Printf("[ydwg] listening on %s for incoming gateway", listen)
+
+	go func() { <-ctx.Done(); ln.Close() }()
+
+	var (
+		curConn net.Conn
+		curMu   sync.Mutex
+	)
+	swapConn := func(next net.Conn) {
+		curMu.Lock()
+		prev := curConn
+		curConn = next
+		curMu.Unlock()
+		if prev != nil {
+			_ = prev.Close()
+		}
+	}
+
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			log.Printf("[ydwg] accept: %v", err)
+			time.Sleep(time.Second)
+			continue
+		}
+		log.Printf("[ydwg] gateway connected from %s", conn.RemoteAddr())
+		swapConn(conn)
+		go func(c net.Conn) {
+			defer c.Close()
+			if err := readFrames(ctx, c, snap, pusher); err != nil {
+				log.Printf("[ydwg] %s closed: %v", c.RemoteAddr(), err)
+			} else {
+				log.Printf("[ydwg] %s closed", c.RemoteAddr())
+			}
+		}(conn)
+	}
+}
+
+// readFrames consumes RAW lines from conn until EOF or context cancellation.
+func readFrames(ctx context.Context, conn net.Conn, snap *telemetry.Snapshot, pusher *aisingest.Pusher) error {
 	reasm := newFastPacketReassembler()
 	names := newAisNameCache()
 
