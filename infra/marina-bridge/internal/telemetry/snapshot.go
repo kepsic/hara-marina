@@ -35,6 +35,11 @@ type Snapshot struct {
 	WindTrueAngleDeg     *float64 // -180..180, relative to bow
 	WindTrueDirDeg       *float64 // 0..360, true compass bearing
 
+	// Heading & course over ground (true degrees, 0..360).
+	HeadingDeg *float64
+	CogDeg     *float64
+	SogKn      *float64
+
 	Lat *float64
 	Lon *float64
 
@@ -68,6 +73,9 @@ func (s *Snapshot) SetWindTrueRelative(speedKn, angleDeg float64) {
 func (s *Snapshot) SetWindTrueDirection(dirDeg float64) {
 	s.set(func() { s.WindTrueDirDeg = &dirDeg })
 }
+func (s *Snapshot) SetHeadingDeg(v float64) { s.set(func() { s.HeadingDeg = &v }) }
+func (s *Snapshot) SetCogDeg(v float64)     { s.set(func() { s.CogDeg = &v }) }
+func (s *Snapshot) SetSogKn(v float64)      { s.set(func() { s.SogKn = &v }) }
 func (s *Snapshot) SetPosition(lat, lon float64) { s.set(func() { s.Lat = &lat; s.Lon = &lon }) }
 
 func (s *Snapshot) set(fn func()) {
@@ -172,6 +180,15 @@ func (s *Snapshot) MarshalIngest(slug string) map[string]any {
 			w["true"] = t
 		}
 		out["wind"] = w
+	}
+	if s.HeadingDeg != nil {
+		out["heading_deg"] = *s.HeadingDeg
+	}
+	if s.CogDeg != nil {
+		out["cog_deg"] = *s.CogDeg
+	}
+	if s.SogKn != nil {
+		out["sog_kn"] = *s.SogKn
 	}
 	if s.Lat != nil && s.Lon != nil {
 		out["position"] = map[string]any{"lat": *s.Lat, "lon": *s.Lon}

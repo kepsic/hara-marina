@@ -73,6 +73,9 @@ function clean(payload) {
     "pressure_mbar",
     "boat_speed_kn",
     "log_total_nm",
+    "heading_deg",
+    "cog_deg",
+    "sog_kn",
   ];
   for (const k of passthrough) {
     if (num(payload[k]) !== undefined) out[k] = num(payload[k]);

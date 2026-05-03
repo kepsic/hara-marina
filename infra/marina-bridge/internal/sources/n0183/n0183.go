@@ -32,6 +32,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"strconv"
 	"strings"
@@ -121,6 +122,10 @@ func parseSentence(raw string, snap *telemetry.Snapshot) {
 		handleVLW(fields[1:], snap)
 	case "XDR":
 		handleXDR(fields[1:], snap)
+	case "HDT":
+		handleHDT(fields[1:], snap)
+	case "HDG":
+		handleHDG(fields[1:], snap)
 	case "RMC":
 		handleRMC(fields[1:], snap)
 	case "GLL":
@@ -297,11 +302,48 @@ func handleVWT(f []string, snap *telemetry.Snapshot) {
 
 // $**VHW,headingT,T,headingM,M,speedKn,N,speedKmh,K — water speed.
 func handleVHW(f []string, snap *telemetry.Snapshot) {
+	if len(f) >= 1 {
+		if v, ok := parseFloat(f[0]); ok {
+			snap.SetHeadingDeg(v)
+		}
+	}
 	if len(f) >= 5 {
 		if v, ok := parseFloat(f[4]); ok {
 			snap.SetBoatSpeedKn(v)
 		}
 	}
+}
+
+// $**HDT,heading,T — true heading.
+func handleHDT(f []string, snap *telemetry.Snapshot) {
+	if len(f) >= 1 {
+		if v, ok := parseFloat(f[0]); ok {
+			snap.SetHeadingDeg(v)
+		}
+	}
+}
+
+// $**HDG,headingMag,deviation,E|W,variation,E|W — magnetic heading + variation.
+func handleHDG(f []string, snap *telemetry.Snapshot) {
+	if len(f) < 1 {
+		return
+	}
+	mag, ok := parseFloat(f[0])
+	if !ok {
+		return
+	}
+	trueHdg := mag
+	if len(f) >= 5 {
+		if v, ok := parseFloat(f[3]); ok {
+			if f[4] == "W" {
+				trueHdg = mag - v
+			} else {
+				trueHdg = mag + v
+			}
+		}
+	}
+	trueHdg = math.Mod(trueHdg+360, 360)
+	snap.SetHeadingDeg(trueHdg)
 }
 
 // $**VLW,totalNm,N,tripNm,N — distance through water.
@@ -335,6 +377,16 @@ func handleRMC(f []string, snap *telemetry.Snapshot) {
 	lon, ok2 := parseLatLon(f[4], f[5])
 	if ok1 && ok2 {
 		snap.SetPosition(lat, lon)
+	}
+	if len(f) >= 7 {
+		if v, ok := parseFloat(f[6]); ok {
+			snap.SetSogKn(v)
+		}
+	}
+	if len(f) >= 8 {
+		if v, ok := parseFloat(f[7]); ok {
+			snap.SetCogDeg(v)
+		}
 	}
 }
 

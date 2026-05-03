@@ -6,8 +6,13 @@ import { makeTelemetry } from "../lib/telemetry";
 import { verifySession, SESSION_COOKIE_NAME } from "../lib/auth";
 import { canViewBoat } from "../lib/owners";
 import BoatPhotos from "../components/BoatPhotos";
+import BoatWindRose from "../components/BoatWindRose";
 
 const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+const isNum = (v) => typeof v === "number" && Number.isFinite(v);
+const fmt = (v, d = 1) => (isNum(v) ? v.toFixed(d) : null);
+const knToMs = (kn) => kn * 0.514444;
 
 export async function getServerSideProps({ req, params }) {
   const slug = params.slug;
@@ -74,7 +79,7 @@ export default function BoatPage({ initialBoat, viewerEmail }) {
     return () => { alive = false; clearInterval(t); };
   }, [slug]);
 
-  // Telemetry refresh
+  // Telemetry refresh — full replace, never merge live with demo.
   useEffect(() => {
     let alive = true;
     async function load() {
@@ -82,17 +87,7 @@ export default function BoatPage({ initialBoat, viewerEmail }) {
         const r = await fetch(`/api/telemetry/${slug}`);
         if (!r.ok) return;
         const j = await r.json();
-        if (alive && !j.error) {
-          setTel(prev => ({
-            ...prev,
-            ...j,
-            battery: { ...prev.battery, ...(j.battery || {}) },
-            bilge:   { ...prev.bilge,   ...(j.bilge   || {}) },
-            cabin:   { ...prev.cabin,   ...(j.cabin   || {}) },
-            position:{ ...prev.position,...(j.position|| {}) },
-            wind:    { ...prev.wind,    ...(j.wind    || {}) },
-          }));
-        }
+        if (alive && !j.error) setTel(j);
       } catch {}
     }
     load();
@@ -136,6 +131,7 @@ export default function BoatPage({ initialBoat, viewerEmail }) {
     ? `${tel.last_seen_ago}s ago`
     : `${Math.round(tel.last_seen_ago / 60)} min ago`;
   const fresh = tel.last_seen_ago < 120;
+  const isDemo = tel.source === "demo";
 
   return (
     <>
@@ -171,6 +167,14 @@ export default function BoatPage({ initialBoat, viewerEmail }) {
               <div style={{fontSize:9,color:fresh?"#2a9a4a":"#a08040",letterSpacing:1,marginTop:1}}>
                 {fresh?"● live":"◌ stale"} · {lastSeen}
               </div>
+              {isDemo && (
+                <div style={{
+                  fontSize:8,letterSpacing:2,marginTop:3,color:"#e08040",
+                  border:"1px solid #e0804055",borderRadius:3,padding:"1px 5px",display:"inline-block",
+                }} title="This boat has no live telemetry feed yet — values shown are simulated.">
+                  DEMO DATA
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -193,21 +197,28 @@ export default function BoatPage({ initialBoat, viewerEmail }) {
         </div>
 
         {/* Telemetry section */}
-        <Section title="🛰 Telemetry">
+        <Section title="🛰 Telemetry" badge={isDemo ? "DEMO" : null}>
           <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
-            <Stat label="Battery" value={tel.battery.voltage.toFixed(2)} unit="V"
-              color={tel.battery.voltage < 12.0 ? "#e08040" : "#2a9a4a"} big/>
-            <Stat label="Battery charge" value={tel.battery.percent} unit="%"
-              color={tel.battery.percent < 30 ? "#e08040" : "#9ec8e0"}/>
-            <Stat label="Shore power" value={tel.shore_power ? "Connected" : "Disconnected"} unit=""
+            <Stat label="Battery" value={fmt(tel.battery?.voltage, 2)} unit="V"
+              color={isNum(tel.battery?.voltage) && tel.battery.voltage < 12.0 ? "#e08040" : "#2a9a4a"} big/>
+            <Stat label="Battery charge" value={isNum(tel.battery?.percent) ? Math.round(tel.battery.percent) : null} unit="%"
+              color={isNum(tel.battery?.percent) && tel.battery.percent < 30 ? "#e08040" : "#9ec8e0"}/>
+            <Stat label="Shore power" value={typeof tel.shore_power === "boolean" ? (tel.shore_power ? "Connected" : "Disconnected") : null} unit=""
               color={tel.shore_power ? "#2a9a4a" : "#a08040"}/>
-            <Stat label="Bilge water" value={tel.bilge.water_cm.toFixed(1)} unit="cm"
-              color={tel.bilge.water_cm > 4 ? "#e08040" : "#6ab0e8"}/>
-            <Stat label="Bilge pump 24h" value={tel.bilge.pump_cycles_24h} unit="cycles"/>
-            <Stat label="Cabin temp" value={tel.cabin.temperature_c.toFixed(1)} unit="°C" color="#f0c040"/>
-            <Stat label="Cabin humidity" value={tel.cabin.humidity_pct} unit="%"/>
-            <Stat label="Heel" value={tel.heel_deg.toFixed(1)} unit="°"
-              color={Math.abs(tel.heel_deg) > 3 ? "#e08040" : "#9ec8e0"}/>
+            <Stat label="Bilge water" value={fmt(tel.bilge?.water_cm, 1)} unit="cm"
+              color={isNum(tel.bilge?.water_cm) && tel.bilge.water_cm > 4 ? "#e08040" : "#6ab0e8"}/>
+            <Stat label="Bilge pump 24h" value={isNum(tel.bilge?.pump_cycles_24h) ? tel.bilge.pump_cycles_24h : null} unit="cycles"/>
+            <Stat label="Cabin temp" value={fmt(tel.cabin?.temperature_c, 1)} unit="°C" color="#f0c040"/>
+            <Stat label="Cabin humidity" value={isNum(tel.cabin?.humidity_pct) ? Math.round(tel.cabin.humidity_pct) : null} unit="%"/>
+            <Stat label="Heel" value={fmt(tel.heel_deg, 1)} unit="°"
+              color={isNum(tel.heel_deg) && Math.abs(tel.heel_deg) > 3 ? "#e08040" : "#9ec8e0"}/>
+            <Stat label="Pitch" value={fmt(tel.pitch_deg, 1)} unit="°"/>
+            <Stat label="Water depth" value={fmt(tel.water_depth_m, 1)} unit="m" color="#6ab0e8"/>
+            <Stat label="Sea temp" value={fmt(tel.water_temp_c, 1)} unit="°C" color="#6ab0e8"/>
+            <Stat label="Boat speed" value={fmt(tel.boat_speed_kn, 1)} unit="kn"/>
+            <Stat label="SOG" value={fmt(tel.sog_kn ?? ais?.sog, 1)} unit="kn"/>
+            <Stat label="Heading" value={isNum(tel.heading_deg) ? `${Math.round(tel.heading_deg)}°` : (isNum(ais?.heading) ? `${Math.round(ais.heading)}°` : null)} unit=""/>
+            <Stat label="Log total" value={fmt(tel.log_total_nm, 1)} unit="NM"/>
           </div>
 
           <div style={{marginTop:14,display:"flex",flexWrap:"wrap",gap:12}}>
@@ -216,17 +227,26 @@ export default function BoatPage({ initialBoat, viewerEmail }) {
               border:"1px solid rgba(126,171,200,0.18)",borderRadius:8,padding:"12px 14px",
             }}>
               <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:6}}>Position</div>
-              <div style={{fontFamily:"monospace",fontSize:13,color:"#e8f4f8"}}>
-                {tel.position.lat.toFixed(5)}° N, {tel.position.lon.toFixed(5)}° E
-              </div>
-              <a href={`https://www.openstreetmap.org/?mlat=${tel.position.lat}&mlon=${tel.position.lon}#map=17/${tel.position.lat}/${tel.position.lon}`}
-                 target="_blank" rel="noreferrer"
-                 style={{fontSize:10,color:"#6ab0e8",letterSpacing:1,textDecoration:"none",marginTop:6,display:"inline-block"}}>
-                Open in map ↗
-              </a>
+              {isNum(tel.position?.lat) && isNum(tel.position?.lon) ? (
+                <>
+                  <div style={{fontFamily:"monospace",fontSize:13,color:"#e8f4f8"}}>
+                    {tel.position.lat.toFixed(5)}° N, {tel.position.lon.toFixed(5)}° E
+                  </div>
+                  <a href={`https://www.openstreetmap.org/?mlat=${tel.position.lat}&mlon=${tel.position.lon}#map=17/${tel.position.lat}/${tel.position.lon}`}
+                     target="_blank" rel="noreferrer"
+                     style={{fontSize:10,color:"#6ab0e8",letterSpacing:1,textDecoration:"none",marginTop:6,display:"inline-block"}}>
+                    Open in map ↗
+                  </a>
+                </>
+              ) : (
+                <div style={{fontSize:11,color:"#5a8aaa"}}>— no GPS fix</div>
+              )}
             </div>
           </div>
         </Section>
+
+        {/* Wind — from boat sensors when available, falls back to weather station */}
+        <BoatWindSection tel={tel} ais={ais} weather={weather} isDemo={isDemo} />
 
         {/* AIS / Marina state */}
         <Section title="📡 AIS · Marina Status">
@@ -294,15 +314,98 @@ export default function BoatPage({ initialBoat, viewerEmail }) {
   );
 }
 
-function Section({ title, children }) {
+function Section({ title, children, badge }) {
   return (
     <div style={{maxWidth:980,margin:"0 auto",padding:"10px 20px 0"}}>
       <div style={{fontSize:10,letterSpacing:3,color:"#7eabc8",textTransform:"uppercase",
-        margin:"18px 0 10px",borderBottom:"1px solid rgba(126,171,200,0.12)",paddingBottom:6}}>
-        {title}
+        margin:"18px 0 10px",borderBottom:"1px solid rgba(126,171,200,0.12)",paddingBottom:6,
+        display:"flex",alignItems:"center",gap:10}}>
+        <span>{title}</span>
+        {badge && (
+          <span style={{fontSize:8,letterSpacing:2,color:"#e08040",
+            border:"1px solid #e0804055",borderRadius:3,padding:"1px 5px"}}
+            title="Source data is simulated, not from sensors."
+          >{badge}</span>
+        )}
       </div>
       {children}
     </div>
+  );
+}
+
+function BoatWindSection({ tel, ais, weather, isDemo }) {
+  const wind = tel?.wind || {};
+  const trueDir = isNum(wind?.true?.direction_deg) ? wind.true.direction_deg : null;
+  const trueKn  = isNum(wind?.true?.speed_kn) ? wind.true.speed_kn : null;
+  const appAng  = isNum(wind?.apparent?.angle_deg) ? wind.apparent.angle_deg : null;
+  const appKn   = isNum(wind?.apparent?.speed_kn) ? wind.apparent.speed_kn : null;
+  const heading = isNum(tel?.heading_deg) ? tel.heading_deg
+                  : (isNum(ais?.heading) ? ais.heading : null);
+  const cog     = isNum(tel?.cog_deg) ? tel.cog_deg
+                  : (isNum(ais?.cog) ? ais.cog : null);
+
+  const hasBoatWind = trueDir !== null || appAng !== null;
+  const usingFallback = !hasBoatWind;
+  // Fall back to Loksa weather station if boat sensor isn't reporting.
+  const fallbackTrueDir = isNum(weather?.winddirection) ? weather.winddirection : null;
+  const fallbackTrueKn  = isNum(weather?.windspeed) ? weather.windspeed / 0.514444 : null;
+
+  const showTrueDir = trueDir ?? (usingFallback ? fallbackTrueDir : null);
+  const showTrueKn  = trueKn  ?? (usingFallback ? fallbackTrueKn  : null);
+
+  const sourceLabel = hasBoatWind
+    ? (isDemo ? "Simulated" : "Boat sensor (NMEA0183)")
+    : (fallbackTrueDir !== null ? "Loksa weather station" : "No data");
+
+  return (
+    <Section
+      title="🌬 Wind"
+      badge={isDemo ? "DEMO" : (usingFallback && fallbackTrueDir !== null ? "WEATHER STATION" : null)}
+    >
+      <div style={{display:"flex",flexWrap:"wrap",gap:18,alignItems:"flex-start"}}>
+        <div style={{
+          background:"linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
+          border:"1px solid rgba(126,171,200,0.18)",borderRadius:8,padding:"14px",
+        }}>
+          <BoatWindRose
+            trueDirDeg={showTrueDir}
+            trueSpeedKn={showTrueKn}
+            apparentAngle={appAng}
+            apparentSpeedKn={appKn}
+            headingDeg={heading}
+            cogDeg={cog}
+            size={240}
+          />
+          <div style={{fontSize:9,letterSpacing:1,color:"#5a8aaa",marginTop:8,textAlign:"center"}}>
+            {sourceLabel}
+          </div>
+        </div>
+        <div style={{flex:"1 1 220px",display:"flex",flexWrap:"wrap",gap:12,alignContent:"flex-start"}}>
+          <Stat label="True wind dir"
+            value={isNum(showTrueDir) ? `${Math.round(showTrueDir)}°` : null}
+            unit="" color="#f0c040"/>
+          <Stat label="True wind speed"
+            value={isNum(showTrueKn) ? knToMs(showTrueKn).toFixed(1) : null}
+            unit="m/s" color="#f0c040"/>
+          <Stat label="Apparent wind"
+            value={isNum(appAng) ? `${appAng > 0 ? "▶" : "◀"} ${Math.round(Math.abs(appAng))}°` : null}
+            unit="" color="#6ad4e8"/>
+          <Stat label="AWS"
+            value={isNum(appKn) ? knToMs(appKn).toFixed(1) : null}
+            unit="m/s" color="#6ad4e8"/>
+          <Stat label="Heading"
+            value={isNum(heading) ? `${Math.round(heading)}°` : null}
+            unit=""/>
+          <Stat label="Course (COG)"
+            value={isNum(cog) ? `${Math.round(cog)}°` : null}
+            unit=""/>
+        </div>
+      </div>
+      <div style={{fontSize:10,color:"#5a8aaa",marginTop:10,lineHeight:1.5}}>
+        Gold arrow: true wind direction (FROM). Cyan arrow: apparent wind on the boat.
+        White triangle on the rim: bow heading. Compass is true north up.
+      </div>
+    </Section>
   );
 }
 
