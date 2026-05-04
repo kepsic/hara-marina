@@ -12,6 +12,7 @@ import { canViewBoat } from "../lib/owners";
 import BoatPhotos from "../components/BoatPhotos";
 import BoatWindRose from "../components/BoatWindRose";
 import HeadingClock from "../components/HeadingClock";
+import GaugeDial from "../components/GaugeDial";
 import TelemetryHistoryChart from "../components/TelemetryHistoryChart";
 
 const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -809,20 +810,52 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
           )}
 
           {(isNum(tel?.cabin?.temperature_c) || isNum(tel?.cabin?.humidity_pct) || isNum(tel?.dewpoint_c) || isNum(seaTempC)) && (
-            <TelemetryGroup title="Climate" style={{marginTop:12}}>
-              {isNum(tel?.cabin?.temperature_c) && (
-                <Stat label="Cabin temp" value={fmt(tel.cabin.temperature_c, 1)} unit="°C" color="#f0c040"/>
-              )}
-              {isNum(tel?.cabin?.humidity_pct) && (
-                <Stat label="Cabin humidity" value={Math.round(tel.cabin.humidity_pct)} unit="%"/>
-              )}
-              {isNum(tel?.dewpoint_c) && (
-                <Stat label="Dew point" value={fmt(tel.dewpoint_c, 1)} unit="°C" color="#9ec8e0"/>
-              )}
-              {isNum(seaTempC) && (
-                <Stat label="Sea temp" value={fmt(seaTempC, 1)} unit="°C" color="#6ab0e8"/>
-              )}
-            </TelemetryGroup>
+            <div style={{marginTop:12}}>
+              <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:8}}>Climate</div>
+              <div style={{
+                display:"grid",
+                gridTemplateColumns:"repeat(auto-fit, minmax(200px, 1fr))",
+                gap:12,
+              }}>
+                {isNum(tel?.cabin?.temperature_c) && (
+                  <GaugeDial
+                    label="Cabin temp" value={tel.cabin.temperature_c} unit="°C"
+                    min={-10} max={40} digits={1} color="#f0c040"
+                    bands={[
+                      { from:-10, to:5,   color:"#6ab0e8" },
+                      { from:18,  to:26,  color:"#2a9a4a" },
+                      { from:30,  to:40,  color:"#e08040" },
+                    ]}
+                  />
+                )}
+                {isNum(tel?.cabin?.humidity_pct) && (
+                  <GaugeDial
+                    label="Cabin humidity" value={tel.cabin.humidity_pct} unit="%"
+                    min={0} max={100} digits={0} color="#9ec8e0"
+                    bands={[
+                      { from:40, to:60, color:"#2a9a4a" },
+                      { from:75, to:100, color:"#e08040" },
+                    ]}
+                  />
+                )}
+                {isNum(tel?.dewpoint_c) && (
+                  <GaugeDial
+                    label="Dew point" value={tel.dewpoint_c} unit="°C"
+                    min={-10} max={30} digits={1} color="#9ec8e0"
+                  />
+                )}
+                {isNum(seaTempC) && (
+                  <GaugeDial
+                    label="Sea temp" value={seaTempC} unit="°C"
+                    min={0} max={30} digits={1} color="#6ab0e8"
+                    bands={[
+                      { from:0,  to:10, color:"#6ab0e8" },
+                      { from:18, to:25, color:"#2a9a4a" },
+                    ]}
+                  />
+                )}
+              </div>
+            </div>
           )}
 
           {(isNum(tel?.heel_deg) || isNum(tel?.pitch_deg) || isNum(tel?.boat_speed_kn) || isNum(tel?.sog_kn) || isNum(ais?.sog) || isNum(tel?.heading_deg) || isNum(ais?.heading) || isNum(tel?.log_total_nm)) && (<>
