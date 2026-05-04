@@ -14,6 +14,8 @@ import BoatWindRose from "../components/BoatWindRose";
 import HeadingClock from "../components/HeadingClock";
 import GaugeDial from "../components/GaugeDial";
 import WaterDepthBar from "../components/WaterDepthBar";
+import SettingsModal from "../components/SettingsModal";
+import ShareModal from "../components/ShareModal";
 import TelemetryHistoryChart from "../components/TelemetryHistoryChart";
 
 const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -24,8 +26,13 @@ const knToMs = (kn) => kn * 0.514444;
 
 export async function getServerSideProps({ req, params, query }) {
   const slug = params.slug;
-  const boat = INITIAL_BOATS.find((b) => norm(b.name) === slug);
-  if (!boat) return { notFound: true };
+  const baseBoat = INITIAL_BOATS.find((b) => norm(b.name) === slug);
+  if (!baseBoat) return { notFound: true };
+
+  // Overlay any owner-saved settings (display name, owner, color, alarms…).
+  const { getBoatSettings, applyBoatSettings } = await import("../lib/boatSettings");
+  const settings = await getBoatSettings(slug);
+  const boat = applyBoatSettings(baseBoat, settings);
 
   const token = req.cookies?.[SESSION_COOKIE_NAME];
   const session = await verifySession(token);
@@ -124,6 +131,8 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
   const [shareMsg, setShareMsg] = useState("");
   const [shareData, setShareData] = useState(null);
   const [shareTtlMin, setShareTtlMin] = useState(120);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [relayBusy, setRelayBusy] = useState(0);
   const [relayMsg, setRelayMsg] = useState("");
   const [ruleEnabled, setRuleEnabled] = useState(false);
@@ -517,6 +526,25 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
             ← HARA MARINA
           </Link>
           <div style={{display:"flex",alignItems:"center",gap:14}}>
+            {isOwnerView && (
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <IconBtn title="Share boat" onClick={() => setShareOpen(true)}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="18" cy="5"  r="3"/>
+                    <circle cx="6"  cy="12" r="3"/>
+                    <circle cx="18" cy="19" r="3"/>
+                    <line x1="8.6"  y1="13.5" x2="15.4" y2="17.5"/>
+                    <line x1="15.4" y1="6.5"  x2="8.6"  y2="10.5"/>
+                  </svg>
+                </IconBtn>
+                <IconBtn title="Boat settings" onClick={() => setSettingsOpen(true)}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.36.16.68.4.93.71.25.31.43.68.51 1.08.08.39.07.81-.02 1.21z"/>
+                  </svg>
+                </IconBtn>
+              </div>
+            )}
             {(viewerEmail || accessKind === "shared") && (
               <div style={{fontSize:9,color:"#5a8aaa",letterSpacing:1}}>
                 {viewerEmail || "shared guest"} ·{" "}
@@ -580,92 +608,6 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
 
         {/* ---- Overview tab ---- */}
         {activeTab === "overview" && (<>
-        {isOwnerView && (
-          <Section title="🔐 Access & Sharing">
-            <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
-              <div style={{
-                flex:"1 1 300px",background:"linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
-                border:"1px solid rgba(126,171,200,0.18)",borderRadius:8,padding:"12px 14px",
-              }}>
-                <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:8}}>
-                  Boat PIN
-                </div>
-                <div style={{fontSize:12,color:"#9ec8e0",lineHeight:1.5,marginBottom:10}}>
-                  Set a persistent PIN for /{slug}. Visitors can unlock this boat page using that PIN.
-                </div>
-                <form onSubmit={saveOwnerPin} style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-                  <input
-                    value={ownerPin}
-                    onChange={(e) => setOwnerPin(e.target.value.replace(/\D/g, "").slice(0, 10))}
-                    placeholder="4-10 digit PIN"
-                    inputMode="numeric"
-                    style={{
-                      flex:"1 1 160px",padding:"8px 10px",fontSize:13,
-                      background:"rgba(255,255,255,0.06)",border:"1px solid rgba(126,171,200,0.25)",
-                      color:"#e8f4f8",borderRadius:6,outline:"none",fontFamily:"inherit",
-                    }}
-                  />
-                  <button type="submit" disabled={ownerPinBusy || ownerPin.length < 4}
-                    style={{
-                      padding:"8px 12px",cursor:"pointer",background:ownerPinBusy?"rgba(126,171,200,0.15)":"#f0c040",
-                      color:ownerPinBusy?"#7eabc8":"#091820",border:"none",borderRadius:6,
-                      fontSize:12,letterSpacing:1,fontWeight:"bold",fontFamily:"inherit",
-                    }}>
-                    {ownerPinBusy ? "Saving…" : (accessInfo?.ownerPinSet ? "Update PIN" : "Set PIN")}
-                  </button>
-                </form>
-                <div style={{fontSize:11,color:ownerPinMsg === "PIN saved" ? "#9eddb0" : "#5a8aaa",marginTop:8}}>
-                  {ownerPinMsg || (accessInfo?.ownerPinSet ? "PIN is configured" : "PIN not set yet")}
-                </div>
-              </div>
-
-              <div style={{
-                flex:"1 1 300px",background:"linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
-                border:"1px solid rgba(126,171,200,0.18)",borderRadius:8,padding:"12px 14px",
-              }}>
-                <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:8}}>
-                  Temporary Share PIN
-                </div>
-                <div style={{fontSize:12,color:"#9ec8e0",lineHeight:1.5,marginBottom:10}}>
-                  Create a temporary shared link with one-time PIN. Anyone with link+PIN can view this boat until expiry.
-                </div>
-                <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-                  <label style={{fontSize:11,color:"#7eabc8"}}>TTL (min)</label>
-                  <input
-                    value={shareTtlMin}
-                    onChange={(e) => setShareTtlMin(Math.max(5, Math.min(1440, Number(e.target.value || 60))))}
-                    type="number"
-                    min="5"
-                    max="1440"
-                    style={{
-                      width:88,padding:"8px 10px",fontSize:13,
-                      background:"rgba(255,255,255,0.06)",border:"1px solid rgba(126,171,200,0.25)",
-                      color:"#e8f4f8",borderRadius:6,outline:"none",fontFamily:"inherit",
-                    }}
-                  />
-                  <button onClick={createShare} disabled={shareBusy}
-                    style={{
-                      padding:"8px 12px",cursor:"pointer",background:shareBusy?"rgba(126,171,200,0.15)":"#f0c040",
-                      color:shareBusy?"#7eabc8":"#091820",border:"none",borderRadius:6,
-                      fontSize:12,letterSpacing:1,fontWeight:"bold",fontFamily:"inherit",
-                    }}>
-                    {shareBusy ? "Creating…" : "Create temporary share"}
-                  </button>
-                </div>
-                <div style={{fontSize:11,color:"#5a8aaa",marginTop:8}}>
-                  {shareMsg || (accessInfo?.activeShare ? `Active share expires ${new Date(accessInfo.activeShare.expiresAtMs).toLocaleString()}` : "No active temporary share")}
-                </div>
-                {shareData && (
-                  <div style={{marginTop:10,fontSize:11,color:"#c8e0f0",lineHeight:1.6}}>
-                    <div>Link: <a href={shareData.shareUrl} style={{color:"#6ab0e8",textDecoration:"none"}}>{shareData.shareUrl}</a></div>
-                    <div>PIN: <strong>{shareData.pin}</strong></div>
-                    <div>Expires: {new Date(shareData.expiresAtMs).toLocaleString()}</div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </Section>
-        )}
 
         {/* Quick live stats on overview */}
         {((!boat.no_battery && isNum(tel?.battery?.voltage)) || isNum(seaTempC) || isNum(tel?.dewpoint_c) || isNum(tel?.cabin?.humidity_pct)) && (
@@ -1103,6 +1045,47 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
           ⚓ HARA · SADAM
         </div>
       </div>
+
+      {isOwnerView && (
+        <>
+          <SettingsModal
+            open={settingsOpen}
+            onClose={() => setSettingsOpen(false)}
+            slug={slug}
+            initialBoat={boat}
+            ownerPin={ownerPin}
+            setOwnerPin={setOwnerPin}
+            ownerPinBusy={ownerPinBusy}
+            ownerPinMsg={ownerPinMsg}
+            saveOwnerPin={saveOwnerPin}
+            accessInfo={accessInfo}
+            onSettingsSaved={(s) => {
+              // Hot-apply visual settings to the page without reload.
+              setBoat((prev) => ({
+                ...prev,
+                name:  s.displayName || prev.name,
+                owner: s.ownerName ?? prev.owner,
+                color: s.color || prev.color,
+                notes: s.notes ?? prev.notes,
+                no_battery: typeof s.no_battery === "boolean" ? s.no_battery : prev.no_battery,
+              }));
+            }}
+          />
+          <ShareModal
+            open={shareOpen}
+            onClose={() => setShareOpen(false)}
+            slug={slug}
+            boatName={boat.name}
+            shareTtlMin={shareTtlMin}
+            setShareTtlMin={setShareTtlMin}
+            shareBusy={shareBusy}
+            shareMsg={shareMsg}
+            shareData={shareData}
+            accessInfo={accessInfo}
+            createShare={createShare}
+          />
+        </>
+      )}
     </>
   );
 }
@@ -1205,6 +1188,19 @@ function ScenarioEditor({ value, onChange, onSave, onCancel, busy }) {
         </button>
       </div>
     </div>
+  );
+}
+
+function IconBtn({ children, onClick, title }) {
+  return (
+    <button onClick={onClick} title={title} aria-label={title}
+      style={{
+        background:"rgba(126,171,200,0.08)", border:"1px solid rgba(126,171,200,0.2)",
+        color:"#9ec8e0", borderRadius:8, padding:"6px 8px", cursor:"pointer",
+        display:"inline-flex", alignItems:"center", justifyContent:"center",
+      }}>
+      {children}
+    </button>
   );
 }
 

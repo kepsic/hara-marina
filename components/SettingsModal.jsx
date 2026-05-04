@@ -1,0 +1,251 @@
+import { useEffect, useState } from "react";
+
+const FIELD_STYLE = {
+  width: "100%", padding: "8px 10px", fontSize: 13,
+  background: "rgba(255,255,255,0.06)",
+  border: "1px solid rgba(126,171,200,0.25)",
+  color: "#e8f4f8", borderRadius: 6, outline: "none", fontFamily: "inherit",
+};
+
+const LABEL_STYLE = {
+  fontSize: 9, letterSpacing: 2, color: "#7eabc8",
+  textTransform: "uppercase", marginBottom: 4, display: "block",
+};
+
+function Field({ label, hint, children }) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <label style={LABEL_STYLE}>{label}</label>
+      {children}
+      {hint && <div style={{ fontSize: 10, color: "#5a8aaa", marginTop: 3 }}>{hint}</div>}
+    </div>
+  );
+}
+
+export default function SettingsModal({
+  open, onClose, slug,
+  // PIN management — handled by parent (uses existing hooks/state).
+  ownerPin, setOwnerPin, ownerPinBusy, ownerPinMsg, saveOwnerPin, accessInfo,
+  initialBoat,
+  onSettingsSaved,
+}) {
+  const [tab, setTab] = useState("identity");
+  const [s, setS] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [saveBusy, setSaveBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  // Load settings on open.
+  useEffect(() => {
+    if (!open || !slug) return;
+    let alive = true;
+    setLoading(true); setMsg("");
+    fetch(`/api/boats/${slug}/settings`)
+      .then((r) => r.json())
+      .then((j) => { if (alive) setS(j?.settings || {}); })
+      .catch(() => { if (alive) setMsg("could not load settings"); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [open, slug]);
+
+  if (!open) return null;
+
+  const update = (k, v) => setS((prev) => ({ ...prev, [k]: v }));
+
+  async function save() {
+    setSaveBusy(true); setMsg("");
+    try {
+      const r = await fetch(`/api/boats/${slug}/settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(s),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.error || "save failed");
+      setS(j.settings || {});
+      setMsg("saved");
+      onSettingsSaved?.(j.settings);
+    } catch (e) {
+      setMsg(e?.message || "save failed");
+    } finally {
+      setSaveBusy(false);
+    }
+  }
+
+  return (
+    <ModalShell title={`⚙ Boat Settings · ${initialBoat?.name || slug}`} onClose={onClose}>
+      <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
+        {[
+          { k: "identity", label: "Identity" },
+          { k: "alarms",   label: "Alarms" },
+          { k: "access",   label: "Access PIN" },
+        ].map((t) => (
+          <TabBtn key={t.k} active={tab === t.k} onClick={() => setTab(t.k)}>{t.label}</TabBtn>
+        ))}
+      </div>
+
+      {loading && <div style={{ fontSize: 12, color: "#5a8aaa" }}>loading…</div>}
+
+      {tab === "identity" && (
+        <div>
+          <Field label="Display name" hint="Visible on the boat page hero (does not change the slug or MQTT topic).">
+            <input style={FIELD_STYLE} value={s.displayName || ""} placeholder={initialBoat?.name || ""}
+                   onChange={(e) => update("displayName", e.target.value)} />
+          </Field>
+          <Field label="Owner / skipper">
+            <input style={FIELD_STYLE} value={s.ownerName || ""} placeholder="e.g. Andres K."
+                   onChange={(e) => update("ownerName", e.target.value)} />
+          </Field>
+          <Field label="Hull colour" hint="Hex colour used for the boat icon and accents.">
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input type="color" value={s.color || initialBoat?.color || "#1a5a3a"}
+                     onChange={(e) => update("color", e.target.value)}
+                     style={{ width: 50, height: 36, border: "none", background: "transparent", cursor: "pointer" }} />
+              <input style={{ ...FIELD_STYLE, flex: 1 }} value={s.color || ""} placeholder={initialBoat?.color || "#1a5a3a"}
+                     onChange={(e) => update("color", e.target.value)} />
+            </div>
+          </Field>
+          <Field label="Notes" hint="Anything you want to remember — model, marina cabinet, surveyor contact, etc.">
+            <textarea style={{ ...FIELD_STYLE, minHeight: 80, fontFamily: "inherit", resize: "vertical" }}
+                      value={s.notes || ""}
+                      onChange={(e) => update("notes", e.target.value)} />
+          </Field>
+          <Field label="No battery monitor" hint="Hides battery widgets when this boat doesn't report battery state.">
+            <label style={{ display: "flex", alignItems: "center", gap: 8, color: "#e8f4f8", fontSize: 13 }}>
+              <input type="checkbox" checked={!!s.no_battery}
+                     onChange={(e) => update("no_battery", e.target.checked)} />
+              Hide battery
+            </label>
+          </Field>
+        </div>
+      )}
+
+      {tab === "alarms" && (
+        <div>
+          <div style={{ fontSize: 11, color: "#7eabc8", marginBottom: 14, lineHeight: 1.5 }}>
+            Thresholds for visual warnings (orange highlights). Leave blank to use the defaults.
+          </div>
+          <Field label="Low water depth alarm (m)" hint="Warn when depth falls below this value.">
+            <input type="number" step="0.1" style={FIELD_STYLE} value={s.depth_alarm_min_m ?? ""}
+                   placeholder="e.g. 1.5"
+                   onChange={(e) => update("depth_alarm_min_m", e.target.value === "" ? null : Number(e.target.value))} />
+          </Field>
+          <Field label="Excessive heel alarm (°)" hint="Warn when |heel| exceeds this angle.">
+            <input type="number" step="1" style={FIELD_STYLE} value={s.heel_alarm_deg ?? ""}
+                   placeholder="e.g. 25"
+                   onChange={(e) => update("heel_alarm_deg", e.target.value === "" ? null : Number(e.target.value))} />
+          </Field>
+          <Field label="Bilge water alarm (cm)" hint="Warn when bilge water height exceeds this.">
+            <input type="number" step="0.5" style={FIELD_STYLE} value={s.bilge_alarm_cm ?? ""}
+                   placeholder="e.g. 4"
+                   onChange={(e) => update("bilge_alarm_cm", e.target.value === "" ? null : Number(e.target.value))} />
+          </Field>
+          <Field label="Low battery voltage (V)" hint="Warn when battery falls below this voltage.">
+            <input type="number" step="0.1" style={FIELD_STYLE} value={s.low_battery_v ?? ""}
+                   placeholder="e.g. 12.0"
+                   onChange={(e) => update("low_battery_v", e.target.value === "" ? null : Number(e.target.value))} />
+          </Field>
+        </div>
+      )}
+
+      {tab === "access" && (
+        <div>
+          <div style={{ fontSize: 11, color: "#7eabc8", marginBottom: 14, lineHeight: 1.5 }}>
+            Set a permanent PIN that lets non-owner visitors unlock <strong>/{slug}</strong> without signing in.
+          </div>
+          <form onSubmit={saveOwnerPin} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <input
+              value={ownerPin}
+              onChange={(e) => setOwnerPin(e.target.value.replace(/\D/g, "").slice(0, 10))}
+              placeholder="4-10 digit PIN"
+              inputMode="numeric"
+              style={{ ...FIELD_STYLE, flex: "1 1 160px" }}
+            />
+            <button type="submit" disabled={ownerPinBusy || ownerPin.length < 4}
+              style={{
+                padding: "8px 12px", cursor: "pointer",
+                background: ownerPinBusy ? "rgba(126,171,200,0.15)" : "#f0c040",
+                color: ownerPinBusy ? "#7eabc8" : "#091820",
+                border: "none", borderRadius: 6, fontSize: 12, letterSpacing: 1, fontWeight: "bold", fontFamily: "inherit",
+              }}>
+              {ownerPinBusy ? "Saving…" : (accessInfo?.ownerPinSet ? "Update PIN" : "Set PIN")}
+            </button>
+          </form>
+          <div style={{ fontSize: 11, color: ownerPinMsg === "PIN saved" ? "#9eddb0" : "#5a8aaa", marginTop: 8 }}>
+            {ownerPinMsg || (accessInfo?.ownerPinSet ? "PIN is configured" : "PIN not set yet")}
+          </div>
+        </div>
+      )}
+
+      {tab !== "access" && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 18, gap: 12 }}>
+          <span style={{ fontSize: 11, color: msg === "saved" ? "#9eddb0" : "#5a8aaa" }}>{msg}</span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={onClose} style={btnGhost}>Close</button>
+            <button onClick={save} disabled={saveBusy} style={btnPrimary}>
+              {saveBusy ? "Saving…" : "Save settings"}
+            </button>
+          </div>
+        </div>
+      )}
+    </ModalShell>
+  );
+}
+
+function TabBtn({ active, children, onClick }) {
+  return (
+    <button onClick={onClick} style={{
+      background: active ? "rgba(158,200,224,0.18)" : "transparent",
+      border: `1px solid ${active ? "rgba(158,200,224,0.5)" : "rgba(126,171,200,0.18)"}`,
+      color: active ? "#e8f4f8" : "#9ec8e0",
+      borderRadius: 6, padding: "6px 12px", fontSize: 11, letterSpacing: 1,
+      textTransform: "uppercase", cursor: "pointer", fontFamily: "inherit",
+    }}>{children}</button>
+  );
+}
+
+const btnPrimary = {
+  padding: "8px 14px", cursor: "pointer", background: "#f0c040",
+  color: "#091820", border: "none", borderRadius: 6,
+  fontSize: 12, letterSpacing: 1, fontWeight: "bold", fontFamily: "inherit",
+};
+
+const btnGhost = {
+  padding: "8px 14px", cursor: "pointer", background: "transparent",
+  color: "#9ec8e0", border: "1px solid rgba(126,171,200,0.3)", borderRadius: 6,
+  fontSize: 12, letterSpacing: 1, fontFamily: "inherit",
+};
+
+export function ModalShell({ title, children, onClose }) {
+  // Close on Escape.
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose?.(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div onClick={onClose} style={{
+      position: "fixed", inset: 0, background: "rgba(7,21,32,0.78)",
+      zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center",
+      padding: "60px 16px", overflowY: "auto",
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        width: "100%", maxWidth: 540,
+        background: "linear-gradient(180deg, #0c2235, #112a3f)",
+        border: "1px solid rgba(126,171,200,0.25)",
+        borderRadius: 10, padding: "18px 20px 20px",
+        boxShadow: "0 24px 60px rgba(0,0,0,0.45)",
+        color: "#e8f4f8", fontFamily: "'Georgia','Times New Roman',serif",
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div style={{ fontSize: 13, letterSpacing: 2, color: "#e8f4f8", textTransform: "uppercase" }}>{title}</div>
+          <button onClick={onClose} aria-label="Close" style={{
+            background: "transparent", border: "none", color: "#7eabc8", fontSize: 20, cursor: "pointer", padding: 0,
+          }}>×</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
