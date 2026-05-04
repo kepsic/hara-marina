@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import BoatWindRose from "./BoatWindRose";
+import WindRoseHistory from "./WindRoseHistory";
 
 /**
  * Interactive telemetry history charts with range + metric-group filters.
@@ -383,34 +384,37 @@ function WindHistoryRose({ rows, loading, err, rangeLabel }) {
   );
 
   return (
-    <div style={{
-      display: "grid", gridTemplateColumns: "auto 1fr", gap: 18, alignItems: "center",
-      background: "linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
-      border: "1px solid rgba(126,171,200,0.18)",
-      borderRadius: 8, padding: "14px 18px",
-    }}>
-      <BoatWindRose
-        size={240}
-        trueDirDeg={isNum(latest.wind_true_dir_deg) ? latest.wind_true_dir_deg : null}
-        trueSpeedKn={isNum(latest.wind_true_speed_kn) ? latest.wind_true_speed_kn : null}
-        apparentAngle={isNum(latest.wind_app_angle_deg) ? latest.wind_app_angle_deg : null}
-        apparentSpeedKn={isNum(latest.wind_app_speed_kn) ? latest.wind_app_speed_kn : null}
-        headingDeg={isNum(latest.heading_deg) ? latest.heading_deg : null}
-        cogDeg={isNum(latest.cog_deg) ? latest.cog_deg : null}
-      />
+    <div style={{ display: "grid", gap: 12 }}>
       <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
-        gap: 14,
+        display: "grid", gridTemplateColumns: "auto 1fr", gap: 18, alignItems: "center",
+        background: "linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
+        border: "1px solid rgba(126,171,200,0.18)",
+        borderRadius: 8, padding: "14px 18px",
       }}>
-        {stat("Last sample", new Date(latest.ts).toLocaleString())}
-        {stat("Avg true dir", agg.avgTrueDir != null ? `${Math.round(agg.avgTrueDir)}°` : null)}
-        {stat("Avg true speed", agg.avgTrueSpeed != null ? agg.avgTrueSpeed.toFixed(1) : null, "kn")}
-        {stat("Max true gust", agg.maxTrueSpeed != null ? agg.maxTrueSpeed.toFixed(1) : null, "kn")}
-        {stat("Avg app speed", agg.avgAppSpeed != null ? agg.avgAppSpeed.toFixed(1) : null, "kn")}
-        {stat("Max app gust", agg.maxAppSpeed != null ? agg.maxAppSpeed.toFixed(1) : null, "kn")}
-        {stat("Samples", agg.samples)}
+        <BoatWindRose
+          size={240}
+          trueDirDeg={isNum(latest.wind_true_dir_deg) ? latest.wind_true_dir_deg : null}
+          trueSpeedKn={isNum(latest.wind_true_speed_kn) ? latest.wind_true_speed_kn : null}
+          apparentAngle={isNum(latest.wind_app_angle_deg) ? latest.wind_app_angle_deg : null}
+          apparentSpeedKn={isNum(latest.wind_app_speed_kn) ? latest.wind_app_speed_kn : null}
+          headingDeg={isNum(latest.heading_deg) ? latest.heading_deg : null}
+          cogDeg={isNum(latest.cog_deg) ? latest.cog_deg : null}
+        />
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+          gap: 14,
+        }}>
+          {stat("Last sample", new Date(latest.ts).toLocaleString())}
+          {stat("Avg true dir", agg.avgTrueDir != null ? `${Math.round(agg.avgTrueDir)}°` : null)}
+          {stat("Avg true speed", agg.avgTrueSpeed != null ? agg.avgTrueSpeed.toFixed(1) : null, "kn")}
+          {stat("Max true gust", agg.maxTrueSpeed != null ? agg.maxTrueSpeed.toFixed(1) : null, "kn")}
+          {stat("Avg app speed", agg.avgAppSpeed != null ? agg.avgAppSpeed.toFixed(1) : null, "kn")}
+          {stat("Max app gust", agg.maxAppSpeed != null ? agg.maxAppSpeed.toFixed(1) : null, "kn")}
+          {stat("Samples", agg.samples)}
+        </div>
       </div>
+      <WindRoseHistory rows={rows} size={360} title={`Wind rose · last ${rangeLabel}`} />
     </div>
   );
 }
