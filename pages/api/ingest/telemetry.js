@@ -1,5 +1,6 @@
 import { putTelemetry } from "../../../lib/telemetryStore";
 import { norm } from "../../../lib/owners";
+import { appendTelemetryHistory } from "../../../lib/supabase";
 
 // Accepts telemetry pushed by EMQX rule-engine webhook (or any HTTP client).
 //
@@ -166,6 +167,9 @@ export default async function handler(req, res) {
   try {
     const record = clean(body);
     if (!record.slug) return res.status(400).json({ error: "invalid slug" });
+    // Best-effort long-term history (Supabase). Failures must not block the
+    // live Redis ingest path.
+    appendTelemetryHistory(stored).catch(() => {});
     const stored = await putTelemetry(record.slug, record);
     return res.status(200).json({ ok: true, slug: stored.slug, ts: stored.ts });
   } catch (e) {

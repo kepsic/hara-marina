@@ -68,7 +68,11 @@ export default async function handler(req, res) {
       const raw = await redis.get(RELAY_STATE_KEY(slug));
       const current = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : {};
       current[`relay${relay}`] = state;
-      await redis.set(RELAY_STATE_KEY(slug), JSON.stringify(current), { ex: 60 * 60 * 24 * 30 });
+      // Short TTL: this is just an optimistic placeholder until the real
+      // PGN 127501 status from the YDCC-04 lands in the live snapshot.
+      // Live state wins on merge, so the cache only matters when telemetry
+      // is briefly stale right after the command.
+      await redis.set(RELAY_STATE_KEY(slug), JSON.stringify(current), { ex: 15 });
     } catch {}
     return res.status(200).json({ ok: true });
   } catch (e) {

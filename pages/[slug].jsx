@@ -11,6 +11,7 @@ import {
 import { canViewBoat } from "../lib/owners";
 import BoatPhotos from "../components/BoatPhotos";
 import BoatWindRose from "../components/BoatWindRose";
+import TelemetryHistoryStrip from "../components/TelemetryHistoryStrip";
 
 const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
@@ -269,7 +270,7 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
       if (!r.ok) {
         setRelayMsg(j.error || "relay command failed");
       } else {
-        setRelayMsg(`Relay ${relay} -> ${state ? "ON" : "OFF"}`);
+        setRelayMsg(`Relay ${relay} -> ${state ? "ON" : "OFF"} (confirming…)`);
         setTel((prev) => ({
           ...(prev || {}),
           relays: {
@@ -280,6 +281,24 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
             },
           },
         }));
+        // Re-poll telemetry quickly so the next PGN 127501 status from the
+        // YDCC-04 confirms (or corrects) the optimistic state, instead of
+        // waiting for the 30s background poll.
+        const confirm = async () => {
+          try {
+            const tr = await fetch(`/api/telemetry/${slug}`);
+            const tj = await tr.json();
+            if (tr.ok && !tj.error) {
+              setTel(tj);
+              const live = tj?.relays?.bank1?.[`relay${relay}`];
+              if (typeof live === "boolean") {
+                setRelayMsg(`Relay ${relay} ${live === state ? "confirmed" : "reported"} ${live ? "ON" : "OFF"}`);
+              }
+            }
+          } catch {}
+        };
+        setTimeout(confirm, 1500);
+        setTimeout(confirm, 4000);
       }
     } catch {
       setRelayMsg("network error");
@@ -723,7 +742,26 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
 
         {/* ---- Telemetry tab ---- */}
         {activeTab === "telemetry" && (<>
-        <Section title="🛰 Telemetry">
+        <Section title="� Last 24 hours">
+          <TelemetryHistoryStrip
+            slug={slug}
+            hours={24}
+            metrics={[
+              { key: "battery_v",    label: "Battery",        unit: "V",   color: "#2a9a4a", fmt: (v) => v.toFixed(2) },
+              { key: "battery_pct",  label: "Battery charge", unit: "%",   color: "#9ec8e0", fmt: (v) => Math.round(v) },
+              { key: "ac_power_w",   label: "AC power",       unit: "W",   color: "#f0c040", fmt: (v) => Math.round(v) },
+              { key: "ac_kwh_total", label: "kWh total",      unit: "kWh", color: "#f0c040", fmt: (v) => v.toFixed(2) },
+              { key: "cabin_temp_c", label: "Cabin temp",     unit: "°C",  color: "#f0c040", fmt: (v) => v.toFixed(1) },
+              { key: "cabin_humid",  label: "Cabin humidity", unit: "%",   color: "#9ec8e0", fmt: (v) => Math.round(v) },
+              { key: "dewpoint_c",   label: "Dew point",      unit: "°C",  color: "#9ec8e0", fmt: (v) => v.toFixed(1) },
+              { key: "water_temp_c", label: "Sea temp",       unit: "°C",  color: "#6ab0e8", fmt: (v) => v.toFixed(1) },
+              { key: "bilge_water_cm", label: "Bilge water",  unit: "cm",  color: "#6ab0e8", fmt: (v) => v.toFixed(1) },
+              { key: "wind_true_speed_kn", label: "Wind (TWS)", unit: "kn", color: "#9ec8e0", fmt: (v) => v.toFixed(1) },
+            ]}
+          />
+        </Section>
+
+        <Section title="�🛰 Telemetry">
           {(!boat.no_battery && (isNum(tel?.battery?.voltage) || isNum(tel?.battery?.percent))) || typeof tel?.shore_power === "boolean" ? (
             <TelemetryGroup title="Electrical">
               {!boat.no_battery && isNum(tel?.battery?.voltage) && (
