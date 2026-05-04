@@ -39,14 +39,14 @@ export default function ShareModal({
     return () => { alive = false; };
   }, [open, publicUrl]);
 
-  if (!open) return null;
-
   const shareText = useMemo(() => {
     const parts = [`⚓ ${boatName} on Hara Marina`];
     if (shareData?.pin) parts.push(`PIN: ${shareData.pin}`);
-    parts.push(publicUrl);
+    if (publicUrl) parts.push(publicUrl);
     return parts.join("\n");
   }, [boatName, shareData, publicUrl]);
+
+  if (!open) return null;
 
   async function copy(text, key) {
     try {
