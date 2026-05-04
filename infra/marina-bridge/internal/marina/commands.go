@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -31,13 +31,13 @@ func NewCommandSubscriber(broker, username, password, topic, clientID string, ha
 			if t := c.Subscribe(topic, 1, func(_ mqtt.Client, m mqtt.Message) {
 				handler(m.Topic(), m.Payload())
 			}); t.Wait() && t.Error() != nil {
-				log.Printf("[marina-cmd] subscribe %s failed: %v", topic, t.Error())
+				slog.Error("subscribe failed", "source", "marina-cmd", "topic", topic, "err", t.Error())
 				return
 			}
-			log.Printf("[marina-cmd] subscribed %s", topic)
+			slog.Info("subscribed", "source", "marina-cmd", "topic", topic)
 		}).
 		SetConnectionLostHandler(func(_ mqtt.Client, err error) {
-			log.Printf("[marina-cmd] connection lost: %v", err)
+			slog.Warn("connection lost", "source", "marina-cmd", "err", err)
 		})
 
 	if strings.HasPrefix(broker, "ssl://") || strings.HasPrefix(broker, "tls://") || strings.HasPrefix(broker, "mqtts://") {

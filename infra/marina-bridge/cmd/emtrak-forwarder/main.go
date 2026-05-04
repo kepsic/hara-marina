@@ -15,7 +15,7 @@ package main
 import (
 	"context"
 	"flag"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strconv"
@@ -64,15 +64,18 @@ func main() {
 	flag.Parse()
 
 	if *url == "" {
-		log.Fatal("AIS_INGEST_URL (or -ingest-url) is required")
+		slog.Error("AIS_INGEST_URL is required", "source", "emtrak-fwd")
+		os.Exit(1)
 	}
 	switch *mode {
 	case "auto", "serial", "tcp":
 	default:
-		log.Fatalf("-mode must be auto, serial or tcp (got %q)", *mode)
+		slog.Error("invalid mode", "source", "emtrak-fwd", "mode", *mode)
+		os.Exit(1)
 	}
 	if *mode == "tcp" && *addr == "" {
-		log.Fatal("-emtrak / EMTRAK_ADDRESS required in tcp mode")
+		slog.Error("-emtrak / EMTRAK_ADDRESS required in tcp mode", "source", "emtrak-fwd")
+		os.Exit(1)
 	}
 
 	pusher := aisingest.NewPusher(config.AisIngestConfig{
@@ -83,7 +86,8 @@ func main() {
 		Name:    *name,
 	})
 	if pusher == nil {
-		log.Fatal("aisingest.NewPusher returned nil — check AIS_INGEST_URL and AIS_INGEST_MMSI")
+		slog.Error("aisingest.NewPusher returned nil", "source", "emtrak-fwd")
+		os.Exit(1)
 	}
 
 	emCfg := config.EmtrakConfig{
@@ -94,14 +98,15 @@ func main() {
 		SerialBaud:   *serialBaud,
 	}
 
-	log.Printf("[emtrak-fwd] starting; mode=%s tcp=%s serial=%s baud=%d ingest=%s mmsi=%s name=%s",
-		emCfg.Mode, emCfg.Address, emCfg.SerialDevice, emCfg.SerialBaud, *url, *mmsi, *name)
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})))
+
+	slog.Info("starting", "source", "emtrak-fwd", "mode", emCfg.Mode, "tcp", emCfg.Address, "serial", emCfg.SerialDevice, "baud", emCfg.SerialBaud, "ingest", *url, "mmsi", *mmsi, "name", *name)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
 	if err := emtrak.Run(ctx, emCfg, pusher); err != nil {
-		log.Printf("[emtrak-fwd] exited: %v", err)
+		slog.Error("emtrak run exited with error", "source", "emtrak-fwd", "err", err)
 		time.Sleep(2 * time.Second)
 		os.Exit(1)
 	}

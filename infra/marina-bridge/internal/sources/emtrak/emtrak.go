@@ -29,7 +29,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"strconv"
 	"strings"
@@ -61,7 +61,7 @@ func Run(ctx context.Context, cfg config.EmtrakConfig, pusher *aisingest.Pusher)
 		return nil
 	}
 	if pusher == nil {
-		log.Printf("[emtrak] enabled but ais ingest pusher is nil — fixes will be dropped")
+		slog.Warn("AIS ingest pusher is nil, fixes will be dropped", "source", "emtrak")
 	}
 	mode := cfg.Mode
 	if mode == "" {
@@ -85,7 +85,7 @@ func Run(ctx context.Context, cfg config.EmtrakConfig, pusher *aisingest.Pusher)
 			err = runAuto(ctx, cfg, baud, pusher)
 		}
 		if err != nil {
-			log.Printf("[emtrak] %v — reconnecting in 5s", err)
+			slog.Error("emtrak disconnected, reconnecting", "source", "emtrak", "err", err)
 		}
 		select {
 		case <-ctx.Done():
@@ -108,7 +108,7 @@ func runAuto(ctx context.Context, cfg config.EmtrakConfig, baud int, pusher *ais
 		if err != nil {
 			continue
 		}
-		log.Printf("[emtrak] connected via serial %s @ %d baud", dev, baud)
+		slog.Info("connected via serial", "source", "emtrak", "device", dev, "baud", baud)
 		go func() { <-ctx.Done(); rc.Close() }()
 		err = runReader(ctx, rc, pusher)
 		rc.Close()
@@ -136,7 +136,7 @@ func runSerial(ctx context.Context, device string, baud int, pusher *aisingest.P
 			lastErr = err
 			continue
 		}
-		log.Printf("[emtrak] connected via serial %s @ %d baud", dev, baud)
+		slog.Info("connected via serial", "source", "emtrak", "device", dev, "baud", baud)
 		go func() { <-ctx.Done(); rc.Close() }()
 		err = runReader(ctx, rc, pusher)
 		rc.Close()
@@ -158,7 +158,7 @@ func runOnce(ctx context.Context, addr string, pusher *aisingest.Pusher) error {
 		return fmt.Errorf("dial %s: %w", addr, err)
 	}
 	defer conn.Close()
-	log.Printf("[emtrak] connected via TCP %s", addr)
+	slog.Info("connected via TCP", "source", "emtrak", "addr", addr)
 
 	go func() { <-ctx.Done(); conn.Close() }()
 

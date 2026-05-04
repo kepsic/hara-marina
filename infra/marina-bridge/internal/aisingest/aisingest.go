@@ -9,7 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -100,14 +100,14 @@ func (p *Pusher) Push(ctx context.Context, fix AisFix) {
 	}
 	resp, err := p.http.Do(req)
 	if err != nil {
-		log.Printf("[aisingest] post failed: %v", err)
+		slog.Error("AIS ingest post failed", "source", "aisingest", "err", err)
 		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		log.Printf("[aisingest] post status %d", resp.StatusCode)
+		slog.Warn("AIS ingest bad status", "source", "aisingest", "status", resp.StatusCode)
 		return
 	}
-	log.Printf("[aisingest] forwarded fix mmsi=%s lat=%.5f lon=%.5f sog=%.2f", fix.MMSI, fix.Lat, fix.Lon, fix.Sog)
+	slog.Debug("AIS fix forwarded", "source", "aisingest", "mmsi", fix.MMSI, "lat", fix.Lat, "lon", fix.Lon, "sog", fix.Sog)
 	_ = fmt.Sprintf
 }

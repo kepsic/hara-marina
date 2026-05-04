@@ -5,7 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -31,10 +31,10 @@ func NewPublisher(broker, username, password, topic, clientID string) (*Publishe
 		SetKeepAlive(30 * time.Second).
 		SetCleanSession(true).
 		SetOnConnectHandler(func(c mqtt.Client) {
-			log.Printf("[marina] connected to %s as %s", broker, username)
+			slog.Info("connected", "source", "marina", "broker", broker, "client", username)
 		}).
 		SetConnectionLostHandler(func(c mqtt.Client, err error) {
-			log.Printf("[marina] connection lost: %v", err)
+			slog.Warn("connection lost", "source", "marina", "err", err)
 		})
 	if strings.HasPrefix(broker, "ssl://") || strings.HasPrefix(broker, "tls://") || strings.HasPrefix(broker, "mqtts://") {
 		opts.SetTLSConfig(&tls.Config{MinVersion: tls.VersionTLS12})

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"sync"
@@ -33,7 +33,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "config: %v\n", err)
 		os.Exit(2)
 	}
-	log.Printf("[bridge] slug=%s interval=%s", cfg.Slug, cfg.PublishInterval)
+
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})))
+
+	slog.Info("bridge started", "source", "bridge", "slug", cfg.Slug, "interval", cfg.PublishInterval.String())
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -136,35 +139,35 @@ func main() {
 	// boat's own bus to the central ais-cache. Returns nil when disabled.
 	aisPusher := aisingest.NewPusher(cfg.AisIngest)
 	if aisPusher != nil {
-		log.Printf("[bridge] AIS ingest enabled → %s mmsi=%s", cfg.AisIngest.URL, cfg.AisIngest.MMSI)
+		slog.Info("AIS ingest enabled", "source", "bridge", "url", cfg.AisIngest.URL, "mmsi", cfg.AisIngest.MMSI)
 	}
 
 	// --- start sources ---
 	if cfg.Sources.Cerbo.Enabled {
 		go func() {
 			if err := cerbo.Run(ctx, cfg.Sources.Cerbo, snap); err != nil {
-				log.Printf("[cerbo] exited: %v", err)
+				slog.Error("source exited", "source", "cerbo", "err", err)
 			}
 		}()
 	}
 	if cfg.Sources.Ydwg.Enabled {
 		go func() {
 			if err := ydwg.Run(ctx, cfg.Sources.Ydwg, snap, aisPusher); err != nil {
-				log.Printf("[ydwg] exited: %v", err)
+				slog.Error("source exited", "source", "ydwg", "err", err)
 			}
 		}()
 	}
 	if cfg.Sources.N0183.Enabled {
 		go func() {
 			if err := n0183.Run(ctx, cfg.Sources.N0183, snap); err != nil {
-				log.Printf("[n0183] exited: %v", err)
+				slog.Error("source exited", "source", "n0183", "err", err)
 			}
 		}()
 	}
 	if cfg.Sources.Emtrak.Enabled {
 		go func() {
 			if err := emtrak.Run(ctx, cfg.Sources.Emtrak, aisPusher); err != nil {
-				log.Printf("[emtrak] exited: %v", err)
+				slog.Error("source exited", "source", "emtrak", "err", err)
 			}
 		}()
 	}
@@ -180,26 +183,27 @@ func main() {
 			func(topic string, payload []byte) {
 				var kind struct{ Type string `json:"type"` }
 				if err := json.Unmarshal(payload, &kind); err != nil {
-					log.Printf("[cmd] invalid json on %s: %v", topic, err)
+					slog.Error("invalid json", "source", "cmd", "topic", topic, "err", err)
 					return
 				}
 				switch kind.Type {
 				case "relay_set":
 					var cmd relayCmd
 					if err := json.Unmarshal(payload, &cmd); err != nil {
-						log.Printf("[cmd] relay_set decode failed: %v", err)
+						slog.Error("relay_set decode failed", "source", "cmd", "err", err)
 						return
 					}
 					if cmd.Bank != relayBank || cmd.Relay < 1 || cmd.Relay > 4 {
-						log.Printf("[cmd] unsupported relay bank=%d relay=%d (configured bank=%d)", cmd.Bank, cmd.Relay, relayBank)
+						slog.Warn("relay command rejected", "source", "cmd", "bank", cmd.Bank, "relay", cmd.Relay, "configured_bank", relayBank)
 						return
 					}
 					if !relayBackendAvailable {
-						log.Printf("[cmd] no relay backend enabled; relay command ignored")
+						slog.Warn("no relay backend enabled", "source", "cmd")
 						return
 					}
+					slog.Info("relay set received", "source", "cmd", "bank", cmd.Bank, "relay", cmd.Relay, "state", cmd.State)
 					if err := writeRelay(cmd.Relay, cmd.State); err != nil {
-						log.Printf("[cmd] relay write failed relay=%d state=%t: %v", cmd.Relay, cmd.State, err)
+						slog.Error("relay write failed", "source", "cmd", "relay", cmd.Relay, "state", cmd.State, "err", err)
 						return
 					}
 					snap.SetRelayBank1(cmd.Relay, cmd.State)
@@ -208,15 +212,15 @@ func main() {
 						rule.desired = &cmd.State
 					}
 					ruleMu.Unlock()
-					log.Printf("[cmd] relay set bank=%d relay=%d state=%t", cmd.Bank, cmd.Relay, cmd.State)
+					slog.Info("relay set ok", "source", "cmd", "bank", cmd.Bank, "relay", cmd.Relay, "state", cmd.State)
 				case "humidity_rule_set":
 					var cmd humidityRuleCmd
 					if err := json.Unmarshal(payload, &cmd); err != nil {
-						log.Printf("[cmd] humidity_rule_set decode failed: %v", err)
+						slog.Error("humidity_rule_set decode failed", "source", "cmd", "err", err)
 						return
 					}
 					if cmd.Bank != relayBank || cmd.Relay < 1 || cmd.Relay > 4 || cmd.OffBelow >= cmd.OnAbove {
-						log.Printf("[cmd] invalid humidity rule bank=%d relay=%d off=%.1f on=%.1f (configured bank=%d)", cmd.Bank, cmd.Relay, cmd.OffBelow, cmd.OnAbove, relayBank)
+						slog.Warn("invalid humidity rule", "source", "cmd", "bank", cmd.Bank, "relay", cmd.Relay, "off_below", cmd.OffBelow, "on_above", cmd.OnAbove, "configured_bank", relayBank)
 						return
 					}
 					ruleMu.Lock()
@@ -226,11 +230,11 @@ func main() {
 					rule.offBelow = cmd.OffBelow
 					rule.desired = nil
 					ruleMu.Unlock()
-					log.Printf("[cmd] humidity rule enabled=%t relay=%d on>%.1f off<%.1f", cmd.Enabled, cmd.Relay, cmd.OnAbove, cmd.OffBelow)
+					slog.Info("humidity rule set", "source", "cmd", "enabled", cmd.Enabled, "relay", cmd.Relay, "on_above", cmd.OnAbove, "off_below", cmd.OffBelow)
 				case "scenarios_set":
 					var cmd scenariosCmd
 					if err := json.Unmarshal(payload, &cmd); err != nil {
-						log.Printf("[cmd] scenarios_set decode failed: %v", err)
+						slog.Error("scenarios_set decode failed", "source", "cmd", "err", err)
 						return
 					}
 					runtime := make([]scenarioRuntime, 0, len(cmd.Scenarios))
@@ -246,17 +250,17 @@ func main() {
 					ruleMu.Lock()
 					scenarios = runtime
 					ruleMu.Unlock()
-					log.Printf("[cmd] scenarios updated: %d", len(runtime))
+					slog.Info("scenarios updated", "source", "cmd", "count", len(runtime))
 				default:
-					log.Printf("[cmd] ignored command type=%s", kind.Type)
+					slog.Debug("unknown command type", "source", "cmd", "type", kind.Type)
 				}
 			},
 		)
 		if err != nil {
-			log.Printf("[cmd] subscriber disabled: %v", err)
+			slog.Error("cmd subscriber disabled", "source", "cmd", "err", err)
 		} else {
 			defer sub.Close()
-			log.Printf("[cmd] listener active on %s", cmdTopic)
+			slog.Info("cmd listener active", "source", "cmd", "topic", cmdTopic)
 		}
 	}
 
@@ -266,7 +270,8 @@ func main() {
 		clientID := fmt.Sprintf("marina-bridge-%s-%d", cfg.Slug, time.Now().UnixNano())
 		p, err := marina.NewPublisher(cfg.Marina.Broker, cfg.Marina.Username, cfg.Marina.Password, cfg.Marina.Topic, clientID)
 		if err != nil {
-			log.Fatalf("[marina] %v", err)
+			slog.Error("publisher init failed", "source", "marina", "err", err)
+			os.Exit(1)
 		}
 		defer p.Close()
 		pub = p
@@ -299,13 +304,13 @@ func main() {
 				}
 				if shouldWrite {
 					if err := writeRelay(ruleCopy.relay, desired); err != nil {
-						log.Printf("[auto] humidity relay write failed relay=%d desired=%t humidity=%.1f: %v", ruleCopy.relay, desired, h, err)
+						slog.Error("humidity relay write failed", "source", "auto", "relay", ruleCopy.relay, "desired", desired, "humidity", h, "err", err)
 					} else {
 						snap.SetRelayBank1(ruleCopy.relay, desired)
 						ruleMu.Lock()
 						rule.desired = &desired
 						ruleMu.Unlock()
-						log.Printf("[auto] humidity=%.1f%% relay%d=%t (on>%.1f off<%.1f)", h, ruleCopy.relay, desired, ruleCopy.onAbove, ruleCopy.offBelow)
+						slog.Info("humidity relay triggered", "source", "auto", "humidity", h, "relay", ruleCopy.relay, "state", desired, "on_above", ruleCopy.onAbove, "off_below", ruleCopy.offBelow)
 					}
 				}
 			}
@@ -348,11 +353,11 @@ func main() {
 					continue
 				}
 				if err := writeRelay(relay, desired); err != nil {
-					log.Printf("[auto-scenario] relay write failed relay=%d desired=%t: %v", relay, desired, err)
+					slog.Error("scenario relay write failed", "source", "auto-scenario", "relay", relay, "desired", desired, "err", err)
 					continue
 				}
 				snap.SetRelayBank1(relay, desired)
-				log.Printf("[auto-scenario] relay%d=%t", relay, desired)
+				slog.Info("scenario relay triggered", "source", "auto-scenario", "relay", relay, "state", desired)
 			}
 
 			ruleMu.Lock()
@@ -362,7 +367,7 @@ func main() {
 
 		doc := snap.MarshalIngest(cfg.Slug)
 		if len(doc) <= 2 {
-			log.Printf("[bridge] no telemetry yet, skipping publish")
+			slog.Debug("no telemetry yet, skipping publish", "source", "bridge")
 			return
 		}
 		if *dryRun {
@@ -370,10 +375,10 @@ func main() {
 			return
 		}
 		if err := pub.Publish(ctx, doc); err != nil {
-			log.Printf("[bridge] publish: %v", err)
+			slog.Error("publish failed", "source", "bridge", "err", err)
 			return
 		}
-		log.Printf("[bridge] published %d fields", len(doc)-2)
+		slog.Debug("published", "source", "bridge", "fields", len(doc)-2)
 	}
 
 	// kick once after a short warmup so sources can populate
@@ -382,7 +387,7 @@ func main() {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Printf("[bridge] shutting down")
+			slog.Info("shutting down", "source", "bridge")
 			return
 		case <-tick.C:
 			publish()

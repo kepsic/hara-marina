@@ -33,7 +33,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"math"
 	"net"
 	"strconv"
@@ -138,10 +138,12 @@ func WriteRelay(ctx context.Context, cfg config.YdwgConfig, relayIndex int, on b
 
 	payload := []byte{byte(bank), stateByte, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 	canID := canIDForPGN(127502, 0xFA, 3)
+	slog.Debug("relay write attempt", "source", "ydwg", "pgn", 127502, "relay", relayIndex, "state", on, "bank", bank, "tx_conn", getTxConn() != nil)
 	if err := writeRawFrame(ctx, canID, payload); err != nil {
+		slog.Error("relay write failed", "source", "ydwg", "relay", relayIndex, "state", on, "err", err)
 		return err
 	}
-	log.Printf("[ydwg] relay control sent pgn=127502 relay=%d state=%t", relayIndex, on)
+	slog.Info("relay control sent", "source", "ydwg", "pgn", 127502, "relay", relayIndex, "state", on, "bank", bank)
 	return nil
 }
 
@@ -172,7 +174,7 @@ func Run(ctx context.Context, cfg config.YdwgConfig, snap *telemetry.Snapshot, p
 			return nil
 		}
 		if err := runClient(ctx, cfg.Address, bank, snap, pusher); err != nil {
-			log.Printf("[ydwg] %v — reconnecting in 5s", err)
+			slog.Error("ydwg client disconnected, reconnecting", "source", "ydwg", "err", err)
 			select {
 			case <-ctx.Done():
 				return nil
@@ -191,7 +193,7 @@ func runClient(ctx context.Context, addr string, bank int, snap *telemetry.Snaps
 	defer conn.Close()
 	setTxConn(conn)
 	defer clearTxConn(conn)
-	log.Printf("[ydwg] connected to %s", addr)
+	slog.Info("connected to gateway", "source", "ydwg", "addr", addr)
 
 	go func() { <-ctx.Done(); conn.Close() }()
 
@@ -209,7 +211,7 @@ func runServer(ctx context.Context, listen string, bank int, snap *telemetry.Sna
 		return fmt.Errorf("listen %s: %w", listen, err)
 	}
 	defer ln.Close()
-	log.Printf("[ydwg] listening on %s for incoming gateway", listen)
+	slog.Info("listening for incoming gateway", "source", "ydwg", "addr", listen)
 
 	go func() { <-ctx.Done(); ln.Close() }()
 
@@ -235,18 +237,18 @@ func runServer(ctx context.Context, listen string, bank int, snap *telemetry.Sna
 			if ctx.Err() != nil {
 				return nil
 			}
-			log.Printf("[ydwg] accept: %v", err)
+			slog.Error("accept failed", "source", "ydwg", "err", err)
 			time.Sleep(time.Second)
 			continue
 		}
-		log.Printf("[ydwg] gateway connected from %s", conn.RemoteAddr())
 		swapConn(conn)
+		slog.Info("gateway connected", "source", "ydwg", "remote", conn.RemoteAddr().String())
 		go func(c net.Conn) {
 			defer c.Close()
 			if err := readFrames(ctx, c, bank, snap, pusher); err != nil {
-				log.Printf("[ydwg] %s closed: %v", c.RemoteAddr(), err)
+				slog.Warn("gateway connection closed", "source", "ydwg", "remote", c.RemoteAddr().String(), "err", err)
 			} else {
-				log.Printf("[ydwg] %s closed", c.RemoteAddr())
+				slog.Info("gateway connection closed", "source", "ydwg", "remote", c.RemoteAddr().String())
 			}
 		}(conn)
 	}
@@ -365,7 +367,7 @@ func parseLine(ctx context.Context, line string, bank int, snap *telemetry.Snaps
 		return
 	default:
 		if _, loaded := seenUnhandledPGN.LoadOrStore(fmt.Sprintf("single:%d", pgn), struct{}{}); !loaded {
-			log.Printf("[ydwg] unhandled single-frame PGN=%d len=%d data=% X", pgn, len(data), data)
+			slog.Debug("unhandled single-frame PGN", "source", "ydwg", "pgn", pgn, "len", len(data), "data", fmt.Sprintf("% X", data))
 		}
 	}
 }
@@ -388,7 +390,7 @@ func handleTemp130316(d []byte) {
 		return
 	}
 	if _, loaded := seenUnhandledPGN.LoadOrStore("known:130316", struct{}{}); !loaded {
-		log.Printf("[ydwg] PGN 130316 carries data; decoder not implemented yet payload=% X", d)
+				slog.Debug("PGN 130316 not implemented", "source", "ydwg", "payload", fmt.Sprintf("% X", d))
 	}
 }
 
@@ -407,7 +409,7 @@ func dispatchFastPacket(ctx context.Context, pgn uint32, payload []byte, names *
 		decodePGN129809(payload, names)
 	default:
 		if _, loaded := seenUnhandledPGN.LoadOrStore(fmt.Sprintf("fast:%d", pgn), struct{}{}); !loaded {
-			log.Printf("[ydwg] unhandled fast-packet PGN=%d len=%d payload=% X", pgn, len(payload), payload)
+			slog.Debug("unhandled fast-packet PGN", "source", "ydwg", "pgn", pgn, "len", len(payload), "payload", fmt.Sprintf("% X", payload))
 		}
 	}
 }

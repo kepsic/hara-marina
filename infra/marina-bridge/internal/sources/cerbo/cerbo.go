@@ -21,7 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"strconv"
 	"strings"
 	"sync"
@@ -102,11 +102,11 @@ func Run(ctx context.Context, cfg config.CerboConfig, snap *telemetry.Snapshot) 
 		SetCleanSession(true).
 		SetKeepAlive(30 * time.Second).
 		SetConnectionLostHandler(func(_ mqtt.Client, err error) {
-			log.Printf("[cerbo] connection lost: %v", err)
+			slog.Warn("connection lost", "source", "cerbo", "err", err)
 		})
 
 	opts.SetOnConnectHandler(func(c mqtt.Client) {
-		log.Printf("[cerbo] connected to %s", cfg.Broker)
+		slog.Info("connected", "source", "cerbo", "broker", cfg.Broker)
 		filter := "N/+/#"
 		if !auto {
 			mu.Lock()
@@ -124,7 +124,7 @@ func Run(ctx context.Context, cfg config.CerboConfig, snap *telemetry.Snapshot) 
 						resolved = parts[1]
 						mu.Unlock()
 						setResolvedVRMID(parts[1])
-						log.Printf("[cerbo] auto-detected VRM portal id: %s", parts[1])
+						slog.Info("auto-detected VRM portal id", "source", "cerbo", "vrm_id", parts[1])
 						go keepalive(ctx, client, parts[1])
 					})
 				}

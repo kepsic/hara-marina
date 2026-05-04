@@ -31,7 +31,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"math"
 	"net"
 	"strconv"
@@ -50,7 +50,7 @@ func Run(ctx context.Context, cfg config.N0183Config, snap *telemetry.Snapshot) 
 			return nil
 		}
 		if err := runOnce(ctx, cfg.Address, snap); err != nil {
-			log.Printf("[n0183] %v — reconnecting in 5s", err)
+			slog.Error("n0183 disconnected, reconnecting", "source", "n0183", "err", err)
 			select {
 			case <-ctx.Done():
 				return nil
@@ -67,7 +67,7 @@ func runOnce(ctx context.Context, addr string, snap *telemetry.Snapshot) error {
 		return fmt.Errorf("dial: %w", err)
 	}
 	defer conn.Close()
-	log.Printf("[n0183] connected to %s", addr)
+	slog.Info("connected", "source", "n0183", "addr", addr)
 
 	go func() { <-ctx.Done(); conn.Close() }()
 
