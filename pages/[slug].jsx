@@ -11,6 +11,7 @@ import {
 import { canViewBoat } from "../lib/owners";
 import BoatPhotos from "../components/BoatPhotos";
 import BoatWindRose from "../components/BoatWindRose";
+import HeadingClock from "../components/HeadingClock";
 import TelemetryHistoryChart from "../components/TelemetryHistoryChart";
 
 const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -809,7 +810,15 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
             </TelemetryGroup>
           )}
 
-          {(isNum(tel?.heel_deg) || isNum(tel?.pitch_deg) || isNum(tel?.boat_speed_kn) || isNum(tel?.sog_kn) || isNum(ais?.sog) || isNum(tel?.heading_deg) || isNum(ais?.heading) || isNum(tel?.log_total_nm)) && (
+          {(isNum(tel?.heel_deg) || isNum(tel?.pitch_deg) || isNum(tel?.boat_speed_kn) || isNum(tel?.sog_kn) || isNum(ais?.sog) || isNum(tel?.heading_deg) || isNum(ais?.heading) || isNum(tel?.log_total_nm)) && (<>
+            {(isNum(tel?.heading_deg) || isNum(ais?.heading) || isNum(tel?.cog_deg) || isNum(ais?.cog)) && (
+              <div style={{marginTop:12,display:"flex",justifyContent:"flex-start"}}>
+                <HeadingClock
+                  headingDeg={isNum(tel?.heading_deg) ? tel.heading_deg : (isNum(ais?.heading) ? ais.heading : null)}
+                  cogDeg={isNum(tel?.cog_deg) ? tel.cog_deg : (isNum(ais?.cog) ? ais.cog : null)}
+                />
+              </div>
+            )}
             <TelemetryGroup title="Motion & Navigation" style={{marginTop:12}}>
               {isNum(tel?.heel_deg) && (
                 <Stat label="Heel" value={fmt(tel.heel_deg, 1)} unit="°"
@@ -831,7 +840,7 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
                 <Stat label="Log (MFD)" value={fmt(tel.log_total_nm, 1)} unit="NM"/>
               )}
             </TelemetryGroup>
-          )}
+          </>)}
 
           {(isNum(tel?.water_depth_m) || hasBilgeWater || hasBilgePump) && (
             <TelemetryGroup title="Water & Bilge" style={{marginTop:12}}>
