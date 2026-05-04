@@ -168,9 +168,12 @@ export default async function handler(req, res) {
     const record = clean(body);
     if (!record.slug) return res.status(400).json({ error: "invalid slug" });
     const stored = await putTelemetry(record.slug, record);
-    // Best-effort long-term history (Supabase). Failures must not block the
-    // live Redis ingest path.
-    appendTelemetryHistory(stored).catch(() => {});
+    // Best-effort long-term history (Supabase). Failures are logged inside
+    // appendTelemetryHistory so they're visible in Vercel runtime logs, but
+    // they must not block the live Redis ingest path.
+    appendTelemetryHistory(stored).catch((e) =>
+      console.error("[ingest] appendTelemetryHistory rejected:", e?.message || e),
+    );
     return res.status(200).json({ ok: true, slug: stored.slug, ts: stored.ts });
   } catch (e) {
     console.error("ingest error:", e);

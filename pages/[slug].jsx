@@ -746,7 +746,9 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
           <TelemetryHistoryChart slug={slug} defaultRange="24h" defaultGroup="power" />
         </Section>
 
-        <Section title="�🛰 Telemetry">
+
+
+        <Section title="🛰 Telemetry">
           {(!boat.no_battery && (isNum(tel?.battery?.voltage) || isNum(tel?.battery?.percent))) || typeof tel?.shore_power === "boolean" ? (
             <TelemetryGroup title="Electrical">
               {!boat.no_battery && isNum(tel?.battery?.voltage) && (
