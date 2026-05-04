@@ -1427,6 +1427,7 @@ function BoatWindSection({ tel, ais, weather }) {
 
   const moving = isNum(sog) && sog >= 0.8;
   const mode = moving && twaAng !== null ? "TWA" : "AWA";
+  const speedMode = mode === "TWA" ? "TWS" : "AWS";
   const modeAng = mode === "TWA" ? twaAng : appAng;
   const modeKn = mode === "TWA" ? (trueKn ?? appKn) : appKn;
 
@@ -1483,7 +1484,7 @@ function BoatWindSection({ tel, ais, weather }) {
         <div style={{flex:"1 1 240px",display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))",gap:12,alignContent:"flex-start"}}>
           {isNum(modeKn) && (
             <GaugeDial
-              label={`${mode} speed`} value={knToMs(modeKn)} unit="m/s"
+              label={`${speedMode} (apparent wind)`} value={knToMs(modeKn)} unit="m/s"
               min={0} max={25} digits={1} color="#6ad4e8"
               bands={[
                 { from:0,  to:3,  color:"#2a9a4a" },
@@ -1494,7 +1495,7 @@ function BoatWindSection({ tel, ais, weather }) {
           )}
           {isNum(showTrueKn) && (
             <GaugeDial
-              label="True wind speed" value={knToMs(showTrueKn)} unit="m/s"
+              label="TWS (true wind)" value={knToMs(showTrueKn)} unit="m/s"
               min={0} max={25} digits={1} color="#f0c040"
               bands={[
                 { from:0,  to:3,  color:"#2a9a4a" },
