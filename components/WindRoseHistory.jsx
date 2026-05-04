@@ -53,15 +53,42 @@ function wedgePath(cx, cy, r0, r1, a1Deg, a2Deg) {
  */
 export default function WindRoseHistory({ rows, size = 360, title }) {
   const stats = useMemo(() => {
+    // Pick mode based on what's actually present in the data:
+    //   "earth"    – we have earth-frame wind direction (true dir, or
+    //                heading + AWA). Cardinals labelled N/E/S/W.
+    //   "relative" – moored boat with no GPS/compass. We only know wind
+    //                angle relative to the bow. Cardinals labelled
+    //                Bow/Stbd/Stern/Port and the result is meaningful only
+    //                if the boat hasn't swung at its mooring.
+    let hasEarth = false;
+    let hasRelative = false;
+    for (const r of rows || []) {
+      if (isNum(r.wind_true_dir_deg) ||
+          (isNum(r.heading_deg) && isNum(r.wind_app_angle_deg))) {
+        hasEarth = true;
+      } else if (isNum(r.wind_app_angle_deg)) {
+        hasRelative = true;
+      }
+      if (hasEarth) break;
+    }
+    const mode = hasEarth ? "earth" : hasRelative ? "relative" : "earth";
+
     const sectorBins = Array.from({ length: SECTORS }, () =>
       SPEED_BINS.map(() => 0)
     );
     let total = 0; let calm = 0;
     for (const r of rows || []) {
-      // Prefer true wind direction; otherwise derive earth-frame dir from heading + AWA.
-      let dir = r.wind_true_dir_deg;
-      if (!isNum(dir) && isNum(r.heading_deg) && isNum(r.wind_app_angle_deg)) {
-        dir = ((r.heading_deg + r.wind_app_angle_deg) % 360 + 360) % 360;
+      let dir = null;
+      if (mode === "earth") {
+        dir = r.wind_true_dir_deg;
+        if (!isNum(dir) && isNum(r.heading_deg) && isNum(r.wind_app_angle_deg)) {
+          dir = ((r.heading_deg + r.wind_app_angle_deg) % 360 + 360) % 360;
+        }
+      } else {
+        // Relative-to-bow: AWA is already in [-180, 180] or [0, 360].
+        if (isNum(r.wind_app_angle_deg)) {
+          dir = ((r.wind_app_angle_deg % 360) + 360) % 360;
+        }
       }
       // Prefer true speed; fall back to apparent speed (good enough at low SOG).
       const spd = isNum(r.wind_true_speed_kn) ? r.wind_true_speed_kn
@@ -78,7 +105,7 @@ export default function WindRoseHistory({ rows, size = 360, title }) {
     const fractions = sectorBins.map((bins) => bins.map((c) => total ? c / total : 0));
     const sectorTotals = fractions.map((bs) => bs.reduce((a, b) => a + b, 0));
     const peak = Math.max(0.0001, ...sectorTotals);
-    return { fractions, sectorTotals, total, calm, peak };
+    return { fractions, sectorTotals, total, calm, peak, mode };
   }, [rows]);
 
   const cx = size / 2;
@@ -92,16 +119,23 @@ export default function WindRoseHistory({ rows, size = 360, title }) {
   const rings = [];
   for (let p = ringStep; p <= peakPct + 0.001; p += ringStep) rings.push(p);
 
-  const cardinals = [
-    { label: "N",  deg: 0   },
-    { label: "NE", deg: 45  },
-    { label: "E",  deg: 90  },
-    { label: "SE", deg: 135 },
-    { label: "S",  deg: 180 },
-    { label: "SW", deg: 225 },
-    { label: "W",  deg: 270 },
-    { label: "NW", deg: 315 },
-  ];
+  const cardinals = stats.mode === "relative"
+    ? [
+        { label: "BOW",   deg: 0,   highlight: true },
+        { label: "STBD",  deg: 90  },
+        { label: "STERN", deg: 180 },
+        { label: "PORT",  deg: 270 },
+      ]
+    : [
+        { label: "N",  deg: 0,   highlight: true },
+        { label: "NE", deg: 45  },
+        { label: "E",  deg: 90  },
+        { label: "SE", deg: 135 },
+        { label: "S",  deg: 180 },
+        { label: "SW", deg: 225 },
+        { label: "W",  deg: 270 },
+        { label: "NW", deg: 315 },
+      ];
 
   return (
     <div style={{
@@ -114,13 +148,20 @@ export default function WindRoseHistory({ rows, size = 360, title }) {
         <div style={{
           alignSelf: "flex-start", fontSize: 9, letterSpacing: 2,
           color: "#7eabc8", textTransform: "uppercase", marginBottom: 4,
-        }}>{title}</div>
+        }}>
+          {title}
+          {stats.mode === "relative" && stats.total > 0 && (
+            <span style={{ color: "#5a8aaa", marginLeft: 8, letterSpacing: 1 }}>
+              · relative to bow (no compass)
+            </span>
+          )}
+        </div>
       )}
 
       <svg width="100%" height={size} viewBox={`0 0 ${size} ${size}`} style={{ maxWidth: size }}>
         {stats.total === 0 && (
           <text x={cx} y={cy + 4} textAnchor="middle" fontSize={11}
-                fontFamily="monospace" fill="#5a8aaa">no wind direction data</text>
+                fontFamily="monospace" fill="#5a8aaa">no wind data</text>
         )}
         {/* radial guide rings + percent labels */}
         {rings.map((p) => {
@@ -136,7 +177,7 @@ export default function WindRoseHistory({ rows, size = 360, title }) {
         })}
 
         {/* cardinal cross + labels */}
-        {cardinals.map(({ label, deg }) => {
+        {cardinals.map(({ label, deg, highlight }) => {
           const [x, y] = vec(deg);
           const lx = cx + x * (rMax + 18);
           const ly = cy + y * (rMax + 18) + 4;
@@ -147,8 +188,8 @@ export default function WindRoseHistory({ rows, size = 360, title }) {
                       stroke="rgba(126,171,200,0.25)" strokeWidth={1} />
               )}
               <text x={lx} y={ly} fontSize={11} fontFamily="monospace"
-                    fill={deg === 0 ? "#e08040" : "#9ec8e0"}
-                    fontWeight={deg === 0 ? 700 : 500}
+                    fill={highlight ? "#e08040" : "#9ec8e0"}
+                    fontWeight={highlight ? 700 : 500}
                     textAnchor="middle">{label}</text>
             </g>
           );
