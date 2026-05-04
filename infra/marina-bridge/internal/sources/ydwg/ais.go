@@ -20,6 +20,8 @@ package ydwg
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -163,7 +165,9 @@ const (
 	mpsToKnots  = 1.9438444924406
 )
 
-// PGN 129039 — Class B Position Report.
+// decodeAisPositionReport decodes PGN 129038 (Class A), 129039 (Class B),
+// or 129040 (Class B Extended). The position fields (MMSI, lat/lon, COG, SOG,
+// optional true heading) share the same byte offsets across all three.
 //
 // Byte-aligned fields we use (canboat reference):
 //
@@ -173,6 +177,11 @@ const (
 //	bytes 14-15 uint16 LE  COG       (1e-4 rad, 0xFFFF = N/A)
 //	bytes 16-17 uint16 LE  SOG       (0.01 m/s, 0xFFFF = N/A)
 //	bytes 21-22 uint16 LE  TrueHdg   (1e-4 rad, 0xFFFF = N/A)
+func decodeAisPositionReport(pgn uint32, p []byte, names *aisNameCache) (aisingest.AisFix, bool) {
+	_ = pgn // reserved for future per-PGN tweaks (e.g. 129040 carries name inline)
+	return decodePGN129039(p, names)
+}
+
 func decodePGN129039(p []byte, names *aisNameCache) (aisingest.AisFix, bool) {
 	if len(p) < 18 {
 		return aisingest.AisFix{}, false
@@ -268,4 +277,133 @@ func trimAisString(b []byte) string {
 		out = append(out, c)
 	}
 	return string(out)
+}
+
+// seenStaticMMSI suppresses repeated decoded-static-info logs per (pgn, mmsi).
+var seenStaticMMSI sync.Map
+
+func logOncePerMMSI(pgn uint32, mmsi string, fn func()) {
+	key := fmt.Sprintf("%d:%s", pgn, mmsi)
+	if _, loaded := seenStaticMMSI.LoadOrStore(key, struct{}{}); !loaded {
+		fn()
+	}
+}
+
+// PGN 129041 — AIS Aids to Navigation (AtoN) Report.
+//
+//	bytes 1-4   uint32 LE  MMSI
+//	bytes 5-8   int32  LE  longitude (1e-7 deg)
+//	bytes 9-12  int32  LE  latitude  (1e-7 deg)
+//	byte  20    AtoN type (high nibble) | flags (low nibble)
+//
+// We don't push AtoNs into the vessel cache (they are buoys/marks, not ships)
+// — only log decoded info once per MMSI so they stop showing up as
+// "unhandled fast-packet PGN".
+func decodePGN129041(p []byte) {
+	if len(p) < 13 {
+		return
+	}
+	mmsi := uint32(p[1]) | uint32(p[2])<<8 | uint32(p[3])<<16 | uint32(p[4])<<24
+	if mmsi == 0 || mmsi == 0xFFFFFFFF {
+		return
+	}
+	lonRaw := int32(uint32(p[5]) | uint32(p[6])<<8 | uint32(p[7])<<16 | uint32(p[8])<<24)
+	latRaw := int32(uint32(p[9]) | uint32(p[10])<<8 | uint32(p[11])<<16 | uint32(p[12])<<24)
+	id := u32ToMMSI(mmsi)
+	logOncePerMMSI(129041, id, func() {
+		slog.Debug("AIS AtoN report", "source", "ydwg", "pgn", 129041, "mmsi", id,
+			"lat", float64(latRaw)*1e-7, "lon", float64(lonRaw)*1e-7)
+	})
+}
+
+// PGN 129793 — AIS UTC and Date Report (typically from base stations).
+//
+//	bytes 1-4   uint32 LE  MMSI (base station)
+//	bytes 5-8   int32  LE  longitude (1e-7 deg)
+//	bytes 9-12  int32  LE  latitude  (1e-7 deg)
+//
+// Logged once per MMSI; not pushed to vessel cache (base stations aren't ships).
+func decodePGN129793(p []byte) {
+	if len(p) < 13 {
+		return
+	}
+	mmsi := uint32(p[1]) | uint32(p[2])<<8 | uint32(p[3])<<16 | uint32(p[4])<<24
+	if mmsi == 0 || mmsi == 0xFFFFFFFF {
+		return
+	}
+	lonRaw := int32(uint32(p[5]) | uint32(p[6])<<8 | uint32(p[7])<<16 | uint32(p[8])<<24)
+	latRaw := int32(uint32(p[9]) | uint32(p[10])<<8 | uint32(p[11])<<16 | uint32(p[12])<<24)
+	id := u32ToMMSI(mmsi)
+	logOncePerMMSI(129793, id, func() {
+		slog.Debug("AIS UTC/date report", "source", "ydwg", "pgn", 129793, "mmsi", id,
+			"lat", float64(latRaw)*1e-7, "lon", float64(lonRaw)*1e-7)
+	})
+}
+
+// PGN 129794 — AIS Class A Static and Voyage Related Data.
+//
+//	bytes 1-4    uint32 LE  MMSI
+//	bytes 5-8    uint32 LE  IMO
+//	bytes 9-15   ASCII (7)  Callsign
+//	bytes 16-35  ASCII (20) Name
+//	byte  36     Ship type
+//
+// Caches the vessel name so subsequent 129038 fixes can be enriched.
+func decodePGN129794(p []byte, names *aisNameCache) {
+	if len(p) < 36 {
+		return
+	}
+	mmsi := uint32(p[1]) | uint32(p[2])<<8 | uint32(p[3])<<16 | uint32(p[4])<<24
+	if mmsi == 0 || mmsi == 0xFFFFFFFF {
+		return
+	}
+	id := u32ToMMSI(mmsi)
+	name := trimAisString(p[16:36])
+	if name != "" && names != nil {
+		names.set(id, name)
+	}
+	logOncePerMMSI(129794, id, func() {
+		slog.Debug("AIS Class A static", "source", "ydwg", "pgn", 129794, "mmsi", id, "name", name)
+	})
+}
+
+// PGN 129810 — AIS Class B "CS" Static Data, Part B.
+//
+//	bytes 1-4    uint32 LE  MMSI
+//	byte  5      Ship type
+//	bytes 6-12   ASCII (7)  Vendor ID
+//	bytes 13-19  ASCII (7)  Callsign
+//	bytes 20-21  uint16 LE  Length (0.1 m)
+//	bytes 22-23  uint16 LE  Beam   (0.1 m)
+//
+// There's no "name" field on Part B; if we have no name yet from Part A
+// (PGN 129809), fall back to the callsign as a friendlier identifier than MMSI.
+func decodePGN129810(p []byte, names *aisNameCache) {
+	if len(p) < 24 {
+		return
+	}
+	mmsi := uint32(p[1]) | uint32(p[2])<<8 | uint32(p[3])<<16 | uint32(p[4])<<24
+	if mmsi == 0 || mmsi == 0xFFFFFFFF {
+		return
+	}
+	id := u32ToMMSI(mmsi)
+	shipType := p[5]
+	callsign := trimAisString(p[13:20])
+	lengthRaw := uint16(p[20]) | uint16(p[21])<<8
+	beamRaw := uint16(p[22]) | uint16(p[23])<<8
+	if names != nil && names.get(id) == "" && callsign != "" {
+		names.set(id, callsign)
+	}
+	logOncePerMMSI(129810, id, func() {
+		var lengthM, beamM float64
+		if lengthRaw != 0xFFFF {
+			lengthM = float64(lengthRaw) * 0.1
+		}
+		if beamRaw != 0xFFFF {
+			beamM = float64(beamRaw) * 0.1
+		}
+		slog.Debug("AIS Class B static (Part B)", "source", "ydwg", "pgn", 129810,
+			"mmsi", id, "callsign", callsign, "ship_type", shipType,
+			"length_m", lengthM, "beam_m", beamM)
+	})
 }

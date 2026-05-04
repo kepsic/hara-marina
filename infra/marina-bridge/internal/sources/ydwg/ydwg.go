@@ -388,9 +388,11 @@ func readFrames(ctx context.Context, conn net.Conn, bank int, snap *telemetry.Sn
 // fastPacketPGNs is the set of PGNs that arrive over multi-frame transport.
 var fastPacketPGNs = map[uint32]bool{
 	128275: true, // Distance Log
+	129029: true, // GNSS Position Data (em-trak full GPS fix)
 	129038: true, // AIS Class A Position
 	129039: true, // AIS Class B Position
 	129040: true, // AIS Class B Extended Position
+	129041: true, // AIS Aids to Navigation (AtoN)
 	129793: true, // AIS UTC and Date Report
 	129794: true, // AIS Class A Static
 	129809: true, // AIS Class B Static, Part A (Name)
@@ -436,7 +438,7 @@ func parseLine(ctx context.Context, line string, bank int, snap *telemetry.Snaps
 		if !complete {
 			return
 		}
-		dispatchFastPacket(ctx, pgn, payload, names, pusher, snap)
+		dispatchFastPacket(ctx, pgn, srcAddr, payload, names, pusher, snap)
 		return
 	}
 
@@ -517,23 +519,65 @@ func handleTemp130316(d []byte) {
 }
 
 // dispatchFastPacket routes a fully reassembled multi-frame payload.
-func dispatchFastPacket(ctx context.Context, pgn uint32, payload []byte, names *aisNameCache, pusher *aisingest.Pusher, snap *telemetry.Snapshot) {
+func dispatchFastPacket(ctx context.Context, pgn uint32, srcAddr uint8, payload []byte, names *aisNameCache, pusher *aisingest.Pusher, snap *telemetry.Snapshot) {
 	switch pgn {
 	case 128275:
 		handleDistanceLog(payload, snap)
-	case 129039, 129038:
-		fix, ok := decodePGN129039(payload, names)
+	case 129029:
+		handleGNSSPosition(payload, snap)
+	case 129039, 129038, 129040:
+		fix, ok := decodeAisPositionReport(pgn, payload, names)
 		if !ok || pusher == nil {
 			return
 		}
 		pusher.Push(ctx, fix)
+	case 129041:
+		decodePGN129041(payload)
+	case 129793:
+		decodePGN129793(payload)
+	case 129794:
+		decodePGN129794(payload, names)
 	case 129809:
 		decodePGN129809(payload, names)
+	case 129810:
+		decodePGN129810(payload, names)
 	default:
 		if _, loaded := seenUnhandledPGN.LoadOrStore(fmt.Sprintf("fast:%d", pgn), struct{}{}); !loaded {
-			slog.Debug("unhandled fast-packet PGN", "source", "ydwg", "pgn", pgn, "len", len(payload), "payload", fmt.Sprintf("% X", payload))
+			slog.Debug("unhandled fast-packet PGN", "source", "ydwg", "pgn", pgn, "src_addr", srcAddr, "len", len(payload), "payload", fmt.Sprintf("% X", payload))
 		}
 	}
+}
+
+// PGN 129029: GNSS Position Data — full GPS fix from em-trak / chartplotters.
+// Layout (canboat reference):
+//
+//	byte  0      SID
+//	bytes 1-2    Date (days since 1970, uint16 LE)
+//	bytes 3-6    Time (uint32 LE, 0.0001 s since midnight)
+//	bytes 7-14   Latitude  int64 LE, 1e-16 deg
+//	bytes 15-22  Longitude int64 LE, 1e-16 deg
+//	bytes 23-30  Altitude  int64 LE, 1e-6 m
+//	byte  31     GNSS type (low nibble) | Method (high nibble)
+//	byte  33     Number of satellites
+//	bytes 34-35  HDOP int16 LE, 0.01
+func handleGNSSPosition(p []byte, snap *telemetry.Snapshot) {
+	if len(p) < 23 {
+		return
+	}
+	latRaw := int64(uint64(p[7]) | uint64(p[8])<<8 | uint64(p[9])<<16 | uint64(p[10])<<24 |
+		uint64(p[11])<<32 | uint64(p[12])<<40 | uint64(p[13])<<48 | uint64(p[14])<<56)
+	lonRaw := int64(uint64(p[15]) | uint64(p[16])<<8 | uint64(p[17])<<16 | uint64(p[18])<<24 |
+		uint64(p[19])<<32 | uint64(p[20])<<40 | uint64(p[21])<<48 | uint64(p[22])<<56)
+	const sentinel = int64(0x7FFFFFFFFFFFFFFF)
+	if latRaw == sentinel || lonRaw == sentinel {
+		return
+	}
+	lat := float64(latRaw) * 1e-16
+	lon := float64(lonRaw) * 1e-16
+	if lat < -90 || lat > 90 || lon < -180 || lon > 180 {
+		return
+	}
+	snap.SetPosition(lat, lon)
 }
 
 const mpsToKn = 1.9438444924406
