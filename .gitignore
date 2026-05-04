@@ -11,3 +11,4 @@ node_modules/
 infra/ais-cache/ais-cache
 infra/marina-bridge/cmd/emtrak-forwarder/emtrak-forwarder
 infra/marina-bridge/cmd/emtrak-forwarder/emtrak-forwarder-*
+.vscode/mcp.json

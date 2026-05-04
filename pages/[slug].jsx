@@ -11,7 +11,7 @@ import {
 import { canViewBoat } from "../lib/owners";
 import BoatPhotos from "../components/BoatPhotos";
 import BoatWindRose from "../components/BoatWindRose";
-import TelemetryHistoryStrip from "../components/TelemetryHistoryStrip";
+import TelemetryHistoryChart from "../components/TelemetryHistoryChart";
 
 const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
@@ -742,23 +742,8 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
 
         {/* ---- Telemetry tab ---- */}
         {activeTab === "telemetry" && (<>
-        <Section title="� Last 24 hours">
-          <TelemetryHistoryStrip
-            slug={slug}
-            hours={24}
-            metrics={[
-              { key: "battery_v",    label: "Battery",        unit: "V",   color: "#2a9a4a", fmt: (v) => v.toFixed(2) },
-              { key: "battery_pct",  label: "Battery charge", unit: "%",   color: "#9ec8e0", fmt: (v) => Math.round(v) },
-              { key: "ac_power_w",   label: "AC power",       unit: "W",   color: "#f0c040", fmt: (v) => Math.round(v) },
-              { key: "ac_kwh_total", label: "kWh total",      unit: "kWh", color: "#f0c040", fmt: (v) => v.toFixed(2) },
-              { key: "cabin_temp_c", label: "Cabin temp",     unit: "°C",  color: "#f0c040", fmt: (v) => v.toFixed(1) },
-              { key: "cabin_humid",  label: "Cabin humidity", unit: "%",   color: "#9ec8e0", fmt: (v) => Math.round(v) },
-              { key: "dewpoint_c",   label: "Dew point",      unit: "°C",  color: "#9ec8e0", fmt: (v) => v.toFixed(1) },
-              { key: "water_temp_c", label: "Sea temp",       unit: "°C",  color: "#6ab0e8", fmt: (v) => v.toFixed(1) },
-              { key: "bilge_water_cm", label: "Bilge water",  unit: "cm",  color: "#6ab0e8", fmt: (v) => v.toFixed(1) },
-              { key: "wind_true_speed_kn", label: "Wind (TWS)", unit: "kn", color: "#9ec8e0", fmt: (v) => v.toFixed(1) },
-            ]}
-          />
+        <Section title="📈 History">
+          <TelemetryHistoryChart slug={slug} defaultRange="24h" defaultGroup="power" />
         </Section>
 
         <Section title="�🛰 Telemetry">
