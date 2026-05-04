@@ -58,8 +58,15 @@ export default function WindRoseHistory({ rows, size = 360, title }) {
     );
     let total = 0; let calm = 0;
     for (const r of rows || []) {
-      const dir = r.wind_true_dir_deg;
-      const spd = r.wind_true_speed_kn;
+      // Prefer true wind direction; otherwise derive earth-frame dir from heading + AWA.
+      let dir = r.wind_true_dir_deg;
+      if (!isNum(dir) && isNum(r.heading_deg) && isNum(r.wind_app_angle_deg)) {
+        dir = ((r.heading_deg + r.wind_app_angle_deg) % 360 + 360) % 360;
+      }
+      // Prefer true speed; fall back to apparent speed (good enough at low SOG).
+      const spd = isNum(r.wind_true_speed_kn) ? r.wind_true_speed_kn
+                : isNum(r.wind_app_speed_kn) ? r.wind_app_speed_kn
+                : null;
       if (!isNum(dir) || !isNum(spd)) continue;
       total++;
       if (spd < 0.5) { calm++; continue; }
@@ -111,6 +118,10 @@ export default function WindRoseHistory({ rows, size = 360, title }) {
       )}
 
       <svg width="100%" height={size} viewBox={`0 0 ${size} ${size}`} style={{ maxWidth: size }}>
+        {stats.total === 0 && (
+          <text x={cx} y={cy + 4} textAnchor="middle" fontSize={11}
+                fontFamily="monospace" fill="#5a8aaa">no wind direction data</text>
+        )}
         {/* radial guide rings + percent labels */}
         {rings.map((p) => {
           const rr = rMin + ((rMax - rMin) * p) / peakPct;
