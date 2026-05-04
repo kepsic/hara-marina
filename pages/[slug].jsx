@@ -1056,8 +1056,10 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
                 const known = relays[key] === true || relays[key] === false;
                 const on = relays[key] === true;
                 const label = boat?.relay_labels?.[String(n)];
+                const stateText = relayBusy === n ? "…" : (known ? (on ? "● ON" : "○ OFF") : "◌ N/A");
+                const mainText = label || `R${n}`;
                 return (
-                  <div key={n} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,minWidth:90}}>
+                  <div key={n} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,minWidth:110}}>
                     <button disabled={relayBusy === n} onClick={() => setRelay(n, !on)}
                       style={{
                         padding:"10px 16px",cursor:"pointer",borderRadius:6,border:"1px solid rgba(126,171,200,0.3)",
@@ -1065,13 +1067,16 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
                         color:on?"#9eddb0":(known?"#9ec8e0":"#7f95a5"),fontSize:13,letterSpacing:1,
                         boxShadow: on ? "0 0 8px rgba(42,154,74,0.3)" : "none",
                         width:"100%",
-                      }}>
-                      R{n} {relayBusy === n ? "…" : (known ? (on ? "● ON" : "○ OFF") : "◌ N/A")}
+                        display:"flex",flexDirection:"column",alignItems:"center",gap:2,
+                      }}
+                      title={label ? `R${n} · ${label}` : `R${n}`}>
+                      <span style={{fontSize:13,fontWeight:600,letterSpacing:0.5}}>{mainText}</span>
+                      <span style={{fontSize:11,letterSpacing:1,opacity:0.85}}>{stateText}</span>
                     </button>
                     {label && (
-                      <div style={{fontSize:10,color:"#7eabc8",letterSpacing:0.5,textAlign:"center",maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}
-                           title={label}>
-                        {label}
+                      <div style={{fontSize:9,color:"#5a8aaa",letterSpacing:1,textTransform:"uppercase"}}
+                           title={`channel R${n}`}>
+                        R{n}
                       </div>
                     )}
                   </div>
