@@ -691,15 +691,98 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
         {/* Weather (Loksa) */}
         <Section title="🌬 Local Conditions · Loksa Station">
           {weather ? (
-            <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
-              <Stat label="Wind" value={typeof weather.windspeed === "number" ? weather.windspeed.toFixed(1) : null} unit="m/s" color="#f0c040" big/>
-              <Stat label="Gust" value={typeof weather.windspeedmax === "number" ? weather.windspeedmax.toFixed(1) : null} unit="m/s"/>
-              <Stat label="Wind dir" value={typeof weather.winddirection === "number" ? `${Math.round(weather.winddirection)}°` : null} unit=""/>
-              <Stat label="Air temp" value={isNum(weather.airtemperature) ? weather.airtemperature : null} unit="°C" color="#f0c040"/>
-              <Stat label="Sea temp" value={isNum(weather.watertemperature) ? weather.watertemperature : null} unit="°C" color="#6ab0e8"/>
-              <Stat label="Sea level" value={isNum(weather.waterlevel ?? weather.waterlevel_eh2000) ? (weather.waterlevel ?? weather.waterlevel_eh2000) : null} unit="cm" color="#6ab0e8"/>
-              <Stat label="Pressure" value={isNum(weather.airpressure) ? weather.airpressure : null} unit="hPa"/>
-              <Stat label="Humidity" value={isNum(weather.relativehumidity) ? weather.relativehumidity : null} unit="%"/>
+            <div style={{display:"flex",flexWrap:"wrap",gap:18,alignItems:"flex-start"}}>
+              {isNum(weather.winddirection) && (
+                <div style={{
+                  background:"linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
+                  border:"1px solid rgba(126,171,200,0.18)",borderRadius:8,padding:"14px",
+                }}>
+                  <HeadingClock headingDeg={weather.winddirection} cogDeg={null} size={200} />
+                  <div style={{fontSize:9,letterSpacing:1,color:"#5a8aaa",marginTop:8,textAlign:"center"}}>
+                    Wind from {Math.round(weather.winddirection)}°
+                  </div>
+                </div>
+              )}
+              <div style={{
+                flex:"1 1 320px",
+                display:"grid",
+                gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))",
+                gap:12,
+              }}>
+                {isNum(weather.windspeed) && (
+                  <GaugeDial
+                    label="Wind" value={weather.windspeed} unit="m/s"
+                    min={0} max={25} digits={1} color="#f0c040"
+                    bands={[
+                      { from:0,  to:3,  color:"#2a9a4a" },
+                      { from:12, to:18, color:"#f0c040" },
+                      { from:18, to:25, color:"#e08040" },
+                    ]}
+                  />
+                )}
+                {isNum(weather.windspeedmax) && (
+                  <GaugeDial
+                    label="Gust" value={weather.windspeedmax} unit="m/s"
+                    min={0} max={30} digits={1} color="#9ec8e0"
+                    bands={[
+                      { from:15, to:22, color:"#f0c040" },
+                      { from:22, to:30, color:"#e08040" },
+                    ]}
+                  />
+                )}
+                {isNum(weather.airtemperature) && (
+                  <GaugeDial
+                    label="Air temp" value={weather.airtemperature} unit="°C"
+                    min={-10} max={35} digits={1} color="#f0c040"
+                    bands={[
+                      { from:-10, to:0,  color:"#6ab0e8" },
+                      { from:18,  to:26, color:"#2a9a4a" },
+                      { from:30,  to:35, color:"#e08040" },
+                    ]}
+                  />
+                )}
+                {isNum(weather.watertemperature) && (
+                  <GaugeDial
+                    label="Sea temp" value={weather.watertemperature} unit="°C"
+                    min={0} max={30} digits={1} color="#6ab0e8"
+                    bands={[
+                      { from:0,  to:10, color:"#6ab0e8" },
+                      { from:18, to:25, color:"#2a9a4a" },
+                    ]}
+                  />
+                )}
+                {isNum(weather.waterlevel ?? weather.waterlevel_eh2000) && (
+                  <GaugeDial
+                    label="Sea level" value={weather.waterlevel ?? weather.waterlevel_eh2000} unit="cm"
+                    min={-80} max={120} digits={0} color="#6ab0e8"
+                    bands={[
+                      { from:-80, to:-40, color:"#e08040" },
+                      { from:-10, to:10,  color:"#2a9a4a" },
+                      { from:60,  to:120, color:"#e08040" },
+                    ]}
+                  />
+                )}
+                {isNum(weather.airpressure) && (
+                  <GaugeDial
+                    label="Pressure" value={weather.airpressure} unit="hPa"
+                    min={970} max={1040} digits={1} color="#9ec8e0"
+                    bands={[
+                      { from:970,  to:1000, color:"#e08040" },
+                      { from:1010, to:1025, color:"#2a9a4a" },
+                    ]}
+                  />
+                )}
+                {isNum(weather.relativehumidity) && (
+                  <GaugeDial
+                    label="Humidity" value={weather.relativehumidity} unit="%"
+                    min={0} max={100} digits={0} color="#9ec8e0"
+                    bands={[
+                      { from:40, to:60,  color:"#2a9a4a" },
+                      { from:85, to:100, color:"#6ab0e8" },
+                    ]}
+                  />
+                )}
+              </div>
             </div>
           ) : (
             <div style={{fontSize:11,color:"#5a8aaa"}}>◌ loading…</div>
