@@ -867,42 +867,99 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
                 />
               </div>
             )}
-            <TelemetryGroup title="Motion & Navigation" style={{marginTop:12}}>
-              {isNum(tel?.heel_deg) && (
-                <Stat label="Heel" value={fmt(tel.heel_deg, 1)} unit="°"
-                  color={Math.abs(tel.heel_deg) > 3 ? "#e08040" : "#9ec8e0"}/>
-              )}
-              {isNum(tel?.pitch_deg) && (
-                <Stat label="Trim" value={fmt(tel.pitch_deg, 1)} unit="°"/>
-              )}
-              {isNum(tel?.boat_speed_kn) && (
-                <Stat label="Boat speed" value={fmt(tel.boat_speed_kn, 1)} unit="kn"/>
-              )}
-              {(isNum(tel?.sog_kn) || isNum(ais?.sog)) && (
-                <Stat label="SOG" value={fmt(tel.sog_kn ?? ais?.sog, 1)} unit="kn"/>
-              )}
-              {(isNum(tel?.heading_deg) || isNum(ais?.heading)) && (
-                <Stat label="Heading" value={isNum(tel?.heading_deg) ? `${Math.round(tel.heading_deg)}°` : (isNum(ais?.heading) ? `${Math.round(ais.heading)}°` : null)} unit=""/>
-              )}
-              {isNum(tel?.log_total_nm) && (
-                <Stat label="Log (MFD)" value={fmt(tel.log_total_nm, 1)} unit="NM"/>
-              )}
-            </TelemetryGroup>
+            <div style={{marginTop:12}}>
+              <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:8}}>Motion &amp; Navigation</div>
+              <div style={{
+                display:"grid",
+                gridTemplateColumns:"repeat(auto-fit, minmax(200px, 1fr))",
+                gap:12,
+              }}>
+                {isNum(tel?.heel_deg) && (
+                  <GaugeDial
+                    label="Heel" value={tel.heel_deg} unit="°"
+                    min={-30} max={30} digits={1}
+                    color={Math.abs(tel.heel_deg) > 3 ? "#e08040" : "#9ec8e0"}
+                    bands={[
+                      { from:-30, to:-15, color:"#e08040" },
+                      { from:-3,  to:3,   color:"#2a9a4a" },
+                      { from:15,  to:30,  color:"#e08040" },
+                    ]}
+                  />
+                )}
+                {isNum(tel?.pitch_deg) && (
+                  <GaugeDial
+                    label="Trim" value={tel.pitch_deg} unit="°"
+                    min={-15} max={15} digits={1} color="#9ec8e0"
+                    bands={[{ from:-3, to:3, color:"#2a9a4a" }]}
+                  />
+                )}
+                {isNum(tel?.boat_speed_kn) && (
+                  <GaugeDial
+                    label="Boat speed" value={tel.boat_speed_kn} unit="kn"
+                    min={0} max={12} digits={1} color="#9ec8e0"
+                  />
+                )}
+                {(isNum(tel?.sog_kn) || isNum(ais?.sog)) && (
+                  <GaugeDial
+                    label="SOG" value={isNum(tel?.sog_kn) ? tel.sog_kn : ais.sog} unit="kn"
+                    min={0} max={12} digits={1} color="#9ec8e0"
+                  />
+                )}
+                {isNum(tel?.log_total_nm) && (
+                  <div style={{
+                    background:"linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
+                    border:"1px solid rgba(126,171,200,0.18)",
+                    borderRadius:8, padding:"14px 16px",
+                    display:"flex", flexDirection:"column", justifyContent:"center",
+                  }}>
+                    <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:6}}>Log (MFD)</div>
+                    <div style={{fontFamily:"serif",fontSize:32,fontWeight:"bold",color:"#e8f4f8"}}>
+                      {fmt(tel.log_total_nm, 1)} <span style={{fontSize:12,fontFamily:"monospace",color:"#7eabc8"}}>NM</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </>)}
 
           {(isNum(tel?.water_depth_m) || hasBilgeWater || hasBilgePump) && (
-            <TelemetryGroup title="Water & Bilge" style={{marginTop:12}}>
-              {isNum(tel?.water_depth_m) && (
-                <Stat label="Water depth" value={fmt(tel.water_depth_m, 1)} unit="m" color="#6ab0e8"/>
-              )}
-              {hasBilgeWater && (
-                <Stat label="Bilge water" value={fmt(tel.bilge.water_cm, 1)} unit="cm"
-                  color={tel.bilge.water_cm > 4 ? "#e08040" : "#6ab0e8"}/>
-              )}
-              {hasBilgePump && (
-                <Stat label="Bilge pump 24h" value={tel.bilge.pump_cycles_24h} unit="cycles"/>
-              )}
-            </TelemetryGroup>
+            <div style={{marginTop:12}}>
+              <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:8}}>Water &amp; Bilge</div>
+              <div style={{
+                display:"grid",
+                gridTemplateColumns:"repeat(auto-fit, minmax(200px, 1fr))",
+                gap:12,
+              }}>
+                {isNum(tel?.water_depth_m) && (
+                  <GaugeDial
+                    label="Water depth" value={tel.water_depth_m} unit="m"
+                    min={0} max={30} digits={1} color="#6ab0e8"
+                    bands={[
+                      { from:0, to:2, color:"#e08040" },
+                      { from:2, to:5, color:"#f0c040" },
+                    ]}
+                  />
+                )}
+                {hasBilgeWater && (
+                  <GaugeDial
+                    label="Bilge water" value={tel.bilge.water_cm} unit="cm"
+                    min={0} max={20} digits={1}
+                    color={tel.bilge.water_cm > 4 ? "#e08040" : "#6ab0e8"}
+                    bands={[
+                      { from:0, to:2,  color:"#2a9a4a" },
+                      { from:4, to:20, color:"#e08040" },
+                    ]}
+                  />
+                )}
+                {hasBilgePump && (
+                  <GaugeDial
+                    label="Bilge pump 24h" value={tel.bilge.pump_cycles_24h} unit="cycles"
+                    min={0} max={50} digits={0} color="#9ec8e0"
+                    bands={[{ from:10, to:50, color:"#e08040" }]}
+                  />
+                )}
+              </div>
+            </div>
           )}
 
           {(isNum(posLat) && isNum(posLon)) && (
