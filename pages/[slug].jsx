@@ -12,6 +12,7 @@ import { canViewBoat } from "../lib/owners";
 import BoatPhotos from "../components/BoatPhotos";
 import BoatWindRose from "../components/BoatWindRose";
 import HeadingClock from "../components/HeadingClock";
+import WindDirCompass from "../components/WindDirCompass";
 import GaugeDial from "../components/GaugeDial";
 import WaterDepthBar from "../components/WaterDepthBar";
 import SettingsModal from "../components/SettingsModal";
@@ -694,13 +695,9 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
             <div style={{display:"flex",flexWrap:"wrap",gap:18,alignItems:"flex-start"}}>
               {isNum(weather.winddirection) && (
                 <div style={{
-                  background:"linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
-                  border:"1px solid rgba(126,171,200,0.18)",borderRadius:8,padding:"14px",
+                  display:"flex", flexDirection:"column", alignItems:"center", gap:6,
                 }}>
-                  <HeadingClock headingDeg={weather.winddirection} cogDeg={null} size={200} />
-                  <div style={{fontSize:9,letterSpacing:1,color:"#5a8aaa",marginTop:8,textAlign:"center"}}>
-                    Wind from {Math.round(weather.winddirection)}°
-                  </div>
+                  <WindDirCompass dirDeg={weather.winddirection} size={200} label="Wind direction" />
                 </div>
               )}
               <div style={{
