@@ -96,6 +96,21 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
   const [weather, setWeather] = useState(null);
   const [ais, setAis] = useState(null);
   const [activeTab, setActiveTab] = useState("overview");
+
+  // Restore tab from URL hash (#tab=telemetry) on mount; persist on change.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const m = window.location.hash.match(/tab=([a-z]+)/i);
+    const allowed = ["overview", "telemetry", "relay"];
+    if (m && allowed.includes(m[1])) setActiveTab(m[1]);
+  }, []);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const next = `#tab=${activeTab}`;
+    if (window.location.hash !== next) {
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${next}`);
+    }
+  }, [activeTab]);
   const [pinInput, setPinInput] = useState("");
   const [pinBusy, setPinBusy] = useState(false);
   const [pinErr, setPinErr] = useState("");
