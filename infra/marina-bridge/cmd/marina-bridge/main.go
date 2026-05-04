@@ -86,6 +86,12 @@ func main() {
 		scenarios []scenarioRuntime
 	)
 	relayBackendAvailable := cfg.Sources.Cerbo.Enabled || cfg.Sources.Ydwg.Enabled
+	// relayBank is the N2K bank instance (1-252) used for YDCC-04 command validation.
+	// Cerbo relays are always bank 1 on the Cerbo side; for YDWG it follows the config.
+	relayBank := 1
+	if cfg.Sources.Ydwg.Enabled && cfg.Sources.Ydwg.RelayBank > 0 {
+		relayBank = cfg.Sources.Ydwg.RelayBank
+	}
 	writeRelay := func(relay int, state bool) error {
 		if cfg.Sources.Cerbo.Enabled {
 			return cerbo.WriteRelay(context.Background(), cfg.Sources.Cerbo, relay, state)
@@ -184,8 +190,8 @@ func main() {
 						log.Printf("[cmd] relay_set decode failed: %v", err)
 						return
 					}
-					if cmd.Bank != 1 || cmd.Relay < 1 || cmd.Relay > 4 {
-						log.Printf("[cmd] unsupported relay bank=%d relay=%d", cmd.Bank, cmd.Relay)
+					if cmd.Bank != relayBank || cmd.Relay < 1 || cmd.Relay > 4 {
+						log.Printf("[cmd] unsupported relay bank=%d relay=%d (configured bank=%d)", cmd.Bank, cmd.Relay, relayBank)
 						return
 					}
 					if !relayBackendAvailable {
@@ -209,8 +215,8 @@ func main() {
 						log.Printf("[cmd] humidity_rule_set decode failed: %v", err)
 						return
 					}
-					if cmd.Bank != 1 || cmd.Relay < 1 || cmd.Relay > 4 || cmd.OffBelow >= cmd.OnAbove {
-						log.Printf("[cmd] invalid humidity rule bank=%d relay=%d off=%.1f on=%.1f", cmd.Bank, cmd.Relay, cmd.OffBelow, cmd.OnAbove)
+					if cmd.Bank != relayBank || cmd.Relay < 1 || cmd.Relay > 4 || cmd.OffBelow >= cmd.OnAbove {
+						log.Printf("[cmd] invalid humidity rule bank=%d relay=%d off=%.1f on=%.1f (configured bank=%d)", cmd.Bank, cmd.Relay, cmd.OffBelow, cmd.OnAbove, relayBank)
 						return
 					}
 					ruleMu.Lock()
