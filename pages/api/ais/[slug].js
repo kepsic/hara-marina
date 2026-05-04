@@ -7,6 +7,7 @@ import {
 import { canViewBoat } from "../../../lib/owners";
 import { fetchSnapshot, isConfigured as cacheConfigured } from "../../../lib/aisCacheClient";
 import { classifyMarinaState, MARINA } from "../../../lib/marina";
+import { getBoatSettings } from "../../../lib/boatSettings";
 import { Redis } from "../../../lib/redis.js";
 
 const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -72,7 +73,13 @@ export default async function handler(req, res) {
   }
 
   const boatMeta = await lookupBoatAisMeta(slug);
-  const mmsi = boatMeta.mmsi;
+  // Owner-editable boat-settings.mmsi is the canonical source; fall back to
+  // the legacy `hara-boats` Redis admin list for back-compat.
+  let mmsi = boatMeta.mmsi;
+  try {
+    const settings = await getBoatSettings(slug);
+    if (settings?.mmsi) mmsi = String(settings.mmsi).trim();
+  } catch {}
   const shipId = boatMeta.shipId;
   const explicitMarineTrafficUrl = boatMeta.explicitMarineTrafficUrl;
   const marineTrafficUrl = buildMarineTrafficUrl({ mmsi, shipId, explicitUrl: explicitMarineTrafficUrl });

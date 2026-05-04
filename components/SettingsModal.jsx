@@ -118,6 +118,11 @@ export default function SettingsModal({
               Hide battery
             </label>
           </Field>
+          <Field label="AIS MMSI" hint="9-digit Maritime Mobile Service Identity from the boat's AIS transponder. Enables the AIS panel and MarineTraffic link.">
+            <input style={FIELD_STYLE} value={s.mmsi || ""} placeholder="e.g. 276866556"
+                   inputMode="numeric" maxLength={9}
+                   onChange={(e) => update("mmsi", e.target.value.replace(/\D/g, "").slice(0, 9))} />
+          </Field>
         </div>
       )}
 
