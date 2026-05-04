@@ -14,6 +14,7 @@ import BoatWindRose from "../components/BoatWindRose";
 import HeadingClock from "../components/HeadingClock";
 import WindDirCompass from "../components/WindDirCompass";
 import GaugeDial from "../components/GaugeDial";
+import BoatAttitude from "../components/BoatAttitude";
 import WaterDepthBar from "../components/WaterDepthBar";
 import SettingsModal from "../components/SettingsModal";
 import ShareModal from "../components/ShareModal";
@@ -955,24 +956,13 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
                 gridTemplateColumns:"repeat(auto-fit, minmax(200px, 1fr))",
                 gap:12,
               }}>
-                {isNum(tel?.heel_deg) && (
-                  <GaugeDial
-                    label="Heel" value={tel.heel_deg} unit="°"
-                    min={-30} max={30} digits={1}
-                    color={Math.abs(tel.heel_deg) > 3 ? "#e08040" : "#9ec8e0"}
-                    bands={[
-                      { from:-30, to:-15, color:"#e08040" },
-                      { from:-3,  to:3,   color:"#2a9a4a" },
-                      { from:15,  to:30,  color:"#e08040" },
-                    ]}
-                  />
-                )}
-                {isNum(tel?.pitch_deg) && (
-                  <GaugeDial
-                    label="Trim" value={tel.pitch_deg} unit="°"
-                    min={-15} max={15} digits={1} color="#9ec8e0"
-                    bands={[{ from:-3, to:3, color:"#2a9a4a" }]}
-                  />
+                {(isNum(tel?.heel_deg) || isNum(tel?.pitch_deg)) && (
+                  <div style={{gridColumn:"1 / -1"}}>
+                    <BoatAttitude
+                      heelDeg={isNum(tel?.heel_deg)  ? tel.heel_deg  : null}
+                      trimDeg={isNum(tel?.pitch_deg) ? tel.pitch_deg : null}
+                    />
+                  </div>
                 )}
                 {isNum(tel?.boat_speed_kn) && (
                   <GaugeDial
