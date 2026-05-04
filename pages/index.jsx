@@ -119,6 +119,8 @@ export default function HaraMarina() {
   const [qDragIdx,   setQDragIdx]   = useState(null);
   const [qDragOver,  setQDragOver]  = useState(null);
   const [weather,    setWeather]    = useState(null);
+  const [marinaConditions, setMarinaConditions] = useState(null); // live wind/sea-temp from marina boats
+  const [boatBadges, setBoatBadges] = useState({}); // { [slug]: { online, battery_pct, shore_power, bilge_cm } }
   const [weatherShown, setWeatherShown] = useState(true);
   const [weatherPos, setWeatherPos]   = useState({ x: null, y: null }); // null = use default top/right
   const weatherDragRef = useRef(null);
@@ -170,6 +172,38 @@ export default function HaraMarina() {
     }
     load();
     const t = setInterval(load, 5 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, []);
+
+  // Marina conditions: wind & sea temp aggregated from moored boats (fresher, more local).
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const r = await fetch("/api/marina-conditions");
+        if (!r.ok) return;
+        const j = await r.json();
+        if (!cancelled) setMarinaConditions(j);
+      } catch {}
+    }
+    load();
+    const t = setInterval(load, 60 * 1000); // every minute
+    return () => { cancelled = true; clearInterval(t); };
+  }, []);
+
+  // Per-boat telemetry badges (public — no auth needed).
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const r = await fetch("/api/boat-badges");
+        if (!r.ok) return;
+        const j = await r.json();
+        if (!cancelled && j.badges) setBoatBadges(j.badges);
+      } catch {}
+    }
+    load();
+    const t = setInterval(load, 60 * 1000); // every minute
     return () => { cancelled = true; clearInterval(t); };
   }, []);
 
@@ -314,8 +348,9 @@ export default function HaraMarina() {
     // from E or W is along the keel and rocks nothing. Beam component on
     // screen = sin(downwind bearing) using the same N=left mapping as the
     // rose. Per-boat duration jitter avoids unison.
-    const wd = weather?.winddirection;
-    const ws = weather?.windspeed;
+    // Prefer marina-boat wind (more local) for rocking animation.
+    const wd = marinaConditions?.wind?.direction_deg ?? weather?.winddirection;
+    const ws = marinaConditions?.wind?.speed_ms      ?? weather?.windspeed;
     let rollDeg = 0, rockDur = 2.6;
     if (typeof wd === "number" && typeof ws === "number" && ws > 0) {
       const toDeg = (wd + 180) % 360;
@@ -323,6 +358,9 @@ export default function HaraMarina() {
       rollDeg = Math.max(-5, Math.min(5, ws * 0.55 * beam));
       rockDur = 2.2 + ((boatId * 37) % 110) / 100; // deterministic 2.2-3.3s
     }
+    // ── Telemetry overlays (drawn on the boat shape) ──────────────────────────
+    const slug = boatSlug(boat.name);
+    const bdata = boatBadges[slug] || null;
     return (
       <div draggable
         onDragStart={e=>onDragStart(e,boatId)} onDragOver={e=>onDragOver(e,boatId)}
@@ -360,8 +398,86 @@ export default function HaraMarina() {
             <line x1="0" y1="12" x2="100" y2="18" stroke="#c8a050" strokeWidth="1" strokeDasharray="4,3" vectorEffect="non-scaling-stroke"/>
           </svg>
         </div>
-        <div className="boat-rock" style={{"--roll": `${rollDeg.toFixed(2)}deg`, "--rockDur": `${rockDur.toFixed(2)}s`}}>
+        {/* Boat shape + telemetry overlays */}
+        <div className="boat-rock" style={{"--roll":`${rollDeg.toFixed(2)}deg`,"--rockDur":`${rockDur.toFixed(2)}s`,position:"relative"}}>
           <BoatShape color={boat.color} isSelected={isSel} isSwapSrc={isSrc} isOver={isOver||isTgt}/>
+
+          {bdata && (() => {
+            const battPct   = bdata.battery_pct;
+            const shore     = bdata.shore_power;
+            const bilgeCm   = bdata.bilge_cm;
+            const online    = bdata.online;
+            const battCol   = battPct == null ? null : battPct < 20 ? "#e05040" : battPct < 50 ? "#f0a030" : "#2a9a4a";
+            const bilgeAlert= bilgeCm != null && bilgeCm > 2;
+            const bilgeCol  = bilgeCm > 5 ? "#e05040" : "#f0a030";
+            return (
+              <>
+                {/* Online dot — top-left of boat hull */}
+                {online != null && (
+                  <div title={online ? "Live telemetry" : "Signal lost"}
+                    style={{position:"absolute",top:1,left:2,width:5,height:5,borderRadius:"50%",
+                      background:online ? "#2a9a4a" : "#3a3a4a",
+                      boxShadow:online ? "0 0 5px #2a9a4a" : undefined,
+                      pointerEvents:"none"}}/>
+                )}
+                {/* Shore power ⚡ — top-right */}
+                {shore === true && (
+                  <div title="Shore power connected"
+                    style={{position:"absolute",top:-1,right:1,fontSize:8,lineHeight:1,
+                      pointerEvents:"none",filter:"drop-shadow(0 0 2px #f0c04088)"}}>⚡</div>
+                )}
+                {/* Bilge alert 💧 — below shore power */}
+                {bilgeAlert && (
+                  <div title={`Bilge ${bilgeCm.toFixed(1)} cm`}
+                    style={{position:"absolute",top:shore===true?10:0,right:1,fontSize:8,lineHeight:1,
+                      color:bilgeCol,pointerEvents:"none"}}>💧</div>
+                )}
+                {/* Battery pill — bottom-left of boat hull */}
+                {battPct != null && (
+                  <div title={`Battery ${Math.round(battPct)}%`}
+                    style={{position:"absolute",bottom:0,left:2,
+                      fontSize:6,fontWeight:"bold",color:battCol,lineHeight:1,
+                      background:"rgba(0,0,0,0.55)",borderRadius:2,
+                      padding:"1px 3px",letterSpacing:0.3,
+                      border:`1px solid ${battCol}55`,pointerEvents:"none"}}>
+                    {Math.round(battPct)}%
+                  </div>
+                )}
+              </>
+            );
+          })()}
+
+          {/* Wind arrow — exact same coordinate mapping as WindRose:
+               N=left(−x), E=top(−y), arrow points DOWNwind. */}
+          {bdata?.wind_dir_deg != null && (() => {
+            const dir = bdata.wind_dir_deg;
+            const speed = bdata.wind_speed_kn;
+            const msx = (deg) => -Math.cos(deg * Math.PI / 180);
+            const msy = (deg) => -Math.sin(deg * Math.PI / 180);
+            const downwind = (dir + 180) % 360;
+            const S = 12;
+            const tipX  = S + msx(downwind) * (S - 3);
+            const tipY  = S + msy(downwind) * (S - 3);
+            const tailX = S - msx(downwind) * (S - 5);
+            const tailY = S - msy(downwind) * (S - 5);
+            const col = typeof speed === "number" && speed > 15 ? "#e05040"
+                      : typeof speed === "number" && speed > 8  ? "#f0a030"
+                      : "#7ec8e3";
+            return (
+              <svg width={S*2} height={S*2} viewBox={`0 0 ${S*2} ${S*2}`}
+                style={{position:"absolute",bottom:-S+2,right:-S+2,pointerEvents:"none",opacity:0.92}}
+                title={`Wind ${Math.round(dir)}° · ${speed != null ? speed.toFixed(1)+" kn" : ""}`}>
+                <defs>
+                  <marker id={`wa-${boatId}`} markerWidth="6" markerHeight="6" refX="6" refY="3" orient="auto">
+                    <path d="M0,0 L6,3 L0,6 Z" fill={col}/>
+                  </marker>
+                </defs>
+                <circle cx={S} cy={S} r={S-1} fill="rgba(8,24,40,0.55)" stroke={col} strokeWidth="0.8"/>
+                <line x1={tailX} y1={tailY} x2={tipX} y2={tipY}
+                  stroke={col} strokeWidth="1.8" strokeLinecap="round" markerEnd={`url(#wa-${boatId})`}/>
+              </svg>
+            );
+          })()}
         </div>
       </div>
     );
@@ -621,13 +737,17 @@ export default function HaraMarina() {
       );
     }
     const w = weather;
-    const dir = w.winddirection;
-    const speed = w.windspeed;
-    const gust = w.windspeedmax;
+    // Prefer live marina-boat readings (in-bay, fresher) for wind and sea temp.
+    const mc = marinaConditions;
+    const hasBoatWind = mc?.wind?.direction_deg != null && mc?.wind?.sample_count > 0;
+    const hasBoatSeaTemp = mc?.water_temp_c != null;
+    const dir   = hasBoatWind ? mc.wind.direction_deg : w.winddirection;
+    const speed = hasBoatWind ? mc.wind.speed_ms      : w.windspeed;
+    const gust  = hasBoatWind ? null                  : w.windspeedmax; // boats don't report gust yet
     const bf = typeof speed === "number" ? beaufort(speed) : null;
     const stat = (label, value, unit, color = "#e8f4f8", source = null) => {
       const has = value !== null && value !== undefined && value !== "";
-      const borrowed = has && source && source.distance_km > 0;
+      const borrowed = has && source && (source.distance_km > 0 || source.marina);
       return (
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",
           padding:"4px 0",borderBottom:"1px solid rgba(126,171,200,0.06)"}}>
@@ -637,8 +757,8 @@ export default function HaraMarina() {
             {has && unit &&
               <span style={{fontSize:9,color:"#5a8aaa",marginLeft:3,fontWeight:"normal"}}>{unit}</span>}
             {borrowed &&
-              <div style={{fontSize:8,color:"#5a8aaa",fontWeight:"normal",letterSpacing:0.5,marginTop:1}}>
-                {source.name} · {source.distance_km} km
+              <div style={{fontSize:8,color: source.marina ? "#2a9a4a" : "#5a8aaa",fontWeight:"normal",letterSpacing:0.5,marginTop:1}}>
+                {source.marina ? `⛵ ${source.name}` : `${source.name} · ${source.distance_km} km`}
               </div>}
           </span>
         </div>
@@ -655,6 +775,11 @@ export default function HaraMarina() {
             <div style={{fontSize:14,fontWeight:"bold",color:"#e8f4f8",letterSpacing:2}}>WEATHER</div>
             <div style={{fontSize:9,color:"#5a8aaa"}}>● {updated}</div>
           </div>
+          {hasBoatWind && (
+            <div style={{fontSize:8,color:"#2a9a4a",letterSpacing:1,marginTop:2}}>
+              ⛵ wind from {mc.wind.sample_count} marina boat{mc.wind.sample_count !== 1 ? "s" : ""}
+            </div>
+          )}
           <button onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()}
             onClick={()=>setWeatherShown(false)}
             title="Close"
@@ -674,7 +799,10 @@ export default function HaraMarina() {
         </div>
         <div style={{padding:"6px 14px 12px"}}>
           {stat("Air temp", w.airtemperature, "°C", "#f0c040", src("airtemperature"))}
-          {stat("Sea temp", w.watertemperature, "°C", "#6ab0e8", src("watertemperature"))}
+          {hasBoatSeaTemp
+            ? stat("Sea temp", mc.water_temp_c?.toFixed(1), "°C", "#6ab0e8",
+                { name: `${mc.sample_count?.sea_temp ?? 1} boat${(mc.sample_count?.sea_temp ?? 1) !== 1 ? "s" : ""}`, marina: true })
+            : stat("Sea temp", w.watertemperature, "°C", "#6ab0e8", src("watertemperature"))}
           {/* Estonian stations report sea level relative to EH2000 datum;
               the legacy `waterlevel` (BK77) field is usually empty. */}
           {stat(
