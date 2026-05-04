@@ -167,10 +167,10 @@ export default async function handler(req, res) {
   try {
     const record = clean(body);
     if (!record.slug) return res.status(400).json({ error: "invalid slug" });
+    const stored = await putTelemetry(record.slug, record);
     // Best-effort long-term history (Supabase). Failures must not block the
     // live Redis ingest path.
     appendTelemetryHistory(stored).catch(() => {});
-    const stored = await putTelemetry(record.slug, record);
     return res.status(200).json({ ok: true, slug: stored.slug, ts: stored.ts });
   } catch (e) {
     console.error("ingest error:", e);
