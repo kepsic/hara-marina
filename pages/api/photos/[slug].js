@@ -16,10 +16,18 @@ const KEY = (slug) => `hara-photos:${slug}`;
 async function getPhotos(slug) {
   const v = await redis.get(KEY(slug));
   if (!v) return [];
-  try { return JSON.parse(v); } catch { return []; }
+  // redis.get() already auto-parses JSON. Be defensive in case an older
+  // version of the value got stored as a raw string.
+  if (Array.isArray(v)) return v;
+  if (typeof v === "string") {
+    try { const p = JSON.parse(v); return Array.isArray(p) ? p : []; } catch { return []; }
+  }
+  return [];
 }
 async function setPhotos(slug, list) {
-  await redis.set(KEY(slug), JSON.stringify(list));
+  // redis.set() serialises objects/arrays itself; passing a stringified value
+  // just stored a JSON-of-JSON string and confused getPhotos on the round trip.
+  await redis.set(KEY(slug), list);
 }
 
 export default async function handler(req, res) {
