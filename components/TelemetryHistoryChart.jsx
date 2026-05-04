@@ -347,6 +347,25 @@ export default function TelemetryHistoryChart({ slug, defaultRange = "24h", defa
     [group, rows],
   );
 
+  // Which groups have ANY data in the current window — used to hide empty chips.
+  const groupsWithData = useMemo(() => {
+    const set = new Set();
+    for (const g of GROUPS) {
+      if (g.metrics.some((m) => rows.some((r) => isNum(r[m.key])))) set.add(g.key);
+    }
+    return set;
+  }, [rows]);
+
+  // If selected group has no data but others do, switch to the first non-empty one.
+  useEffect(() => {
+    if (loading || err) return;
+    if (groupsWithData.size === 0) return;
+    if (!groupsWithData.has(groupKey)) {
+      const next = GROUPS.find((g) => groupsWithData.has(g.key));
+      if (next) setGroupKey(next.key);
+    }
+  }, [groupsWithData, groupKey, loading, err]);
+
   const dataSpan = useMemo(() => {
     if (!rows.length) return null;
     const ts = rows.map((r) => new Date(r.ts).getTime()).filter(isNum);
@@ -371,7 +390,7 @@ export default function TelemetryHistoryChart({ slug, defaultRange = "24h", defa
           </Chip>
         ))}
         <span style={{ width: 12 }} />
-        {GROUPS.map((g) => (
+        {GROUPS.filter((g) => groupsWithData.has(g.key) || rows.length === 0).map((g) => (
           <Chip key={g.key} active={g.key === groupKey} onClick={() => setGroupKey(g.key)}>
             {g.label}
           </Chip>
