@@ -378,7 +378,13 @@ func main() {
 			slog.Error("publish failed", "source", "bridge", "err", err)
 			return
 		}
-		slog.Debug("published", "source", "bridge", "fields", len(doc)-2)
+		keys := make([]string, 0, len(doc)-2)
+		for k := range doc {
+			if k != "slug" && k != "ts" {
+				keys = append(keys, k)
+			}
+		}
+		slog.Debug("published", "source", "bridge", "keys", keys)
 	}
 
 	// kick once after a short warmup so sources can populate
