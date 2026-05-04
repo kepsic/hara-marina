@@ -146,12 +146,14 @@ func writeRawFrame(ctx context.Context, canID uint32, data []byte) error {
 		return fmt.Errorf("invalid CAN payload length %d", len(data))
 	}
 
-	ts := time.Now().Format("15:04:05.000")
 	parts := make([]string, 0, len(data))
 	for _, b := range data {
 		parts = append(parts, fmt.Sprintf("%02X", b))
 	}
-	line := fmt.Sprintf("%s T %08X %s\n", ts, canID, strings.Join(parts, " "))
+	// YD RAW input format (PC→device): "<CANID> <b0> <b1> ...\r\n"
+	// No timestamp prefix, no direction marker — those are present only on
+	// device→PC echoes. CRLF terminator is required by the YD parser.
+	line := fmt.Sprintf("%08X %s\r\n", canID, strings.Join(parts, " "))
 
 	if dl, ok := ctx.Deadline(); ok {
 		_ = conn.SetWriteDeadline(dl)
