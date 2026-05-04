@@ -135,6 +135,7 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [relayBusy, setRelayBusy] = useState(0);
+  const [relayPending, setRelayPending] = useState({}); // { [n]: expectedState } while awaiting confirm
   const [relayMsg, setRelayMsg] = useState("");
   const [ruleEnabled, setRuleEnabled] = useState(false);
   const [ruleRelay, setRuleRelay] = useState(1);
@@ -287,6 +288,7 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
 
   async function setRelay(relay, state) {
     setRelayBusy(relay);
+    setRelayPending((p) => ({ ...p, [relay]: state }));
     setRelayMsg("");
     try {
       const r = await fetch(`/api/relays/${slug}`, {
@@ -297,8 +299,9 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
       const j = await r.json();
       if (!r.ok) {
         setRelayMsg(j.error || "relay command failed");
+        setRelayPending((p) => { const n = { ...p }; delete n[relay]; return n; });
       } else {
-        setRelayMsg(`Relay ${relay} -> ${state ? "ON" : "OFF"} (confirming…)`);
+        setRelayMsg(`Relay ${relay} → ${state ? "ON" : "OFF"} (confirming…)`);
         setTel((prev) => ({
           ...(prev || {}),
           relays: {
@@ -319,17 +322,30 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
             if (tr.ok && !tj.error) {
               setTel(tj);
               const live = tj?.relays?.bank1?.[`relay${relay}`];
-              if (typeof live === "boolean") {
-                setRelayMsg(`Relay ${relay} ${live === state ? "confirmed" : "reported"} ${live ? "ON" : "OFF"}`);
+              if (typeof live === "boolean" && live === state) {
+                setRelayMsg(`Relay ${relay} confirmed ${live ? "ON" : "OFF"}`);
+                setRelayPending((p) => { const n = { ...p }; delete n[relay]; return n; });
+                return true;
+              }
+              if (typeof live === "boolean" && live !== state) {
+                setRelayMsg(`Relay ${relay} reported ${live ? "ON" : "OFF"}`);
               }
             }
           } catch {}
+          return false;
         };
-        setTimeout(confirm, 1500);
-        setTimeout(confirm, 4000);
+        setTimeout(async () => {
+          if (await confirm()) return;
+          setTimeout(async () => {
+            if (await confirm()) return;
+            // give up waiting; clear pending so UI reflects whatever the bus reports
+            setRelayPending((p) => { const n = { ...p }; delete n[relay]; return n; });
+          }, 2500);
+        }, 1500);
       }
     } catch {
       setRelayMsg("network error");
+      setRelayPending((p) => { const n = { ...p }; delete n[relay]; return n; });
     } finally {
       setRelayBusy(0);
     }
@@ -1053,21 +1069,28 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
             <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"flex-start"}}>
               {[1,2,3,4].map((n) => {
                 const key = `relay${n}`;
-                const known = relays[key] === true || relays[key] === false;
-                const on = relays[key] === true;
+                const pendingState = relayPending[n];
+                const isPending = typeof pendingState === "boolean";
+                const known = relays[key] === true || relays[key] === false || isPending;
+                const on = isPending ? pendingState : relays[key] === true;
                 const label = boat?.relay_labels?.[String(n)];
-                const stateText = relayBusy === n ? "…" : (known ? (on ? "● ON" : "○ OFF") : "◌ N/A");
+                const stateText = isPending
+                  ? <span style={{display:"inline-flex",alignItems:"center",gap:6}}>
+                      <Spinner /> {pendingState ? "turning ON…" : "turning OFF…"}
+                    </span>
+                  : (known ? (on ? "● ON" : "○ OFF") : "◌ N/A");
                 const mainText = label || `R${n}`;
                 return (
                   <div key={n} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,minWidth:110}}>
-                    <button disabled={relayBusy === n} onClick={() => setRelay(n, !on)}
+                    <button disabled={relayBusy === n || isPending} onClick={() => setRelay(n, !on)}
                       style={{
-                        padding:"10px 16px",cursor:"pointer",borderRadius:6,border:"1px solid rgba(126,171,200,0.3)",
+                        padding:"10px 16px",cursor: isPending ? "wait" : "pointer",borderRadius:6,border:"1px solid rgba(126,171,200,0.3)",
                         background:on?"rgba(42,154,74,0.35)":(known?"rgba(255,255,255,0.06)":"rgba(120,120,120,0.12)"),
                         color:on?"#9eddb0":(known?"#9ec8e0":"#7f95a5"),fontSize:13,letterSpacing:1,
                         boxShadow: on ? "0 0 8px rgba(42,154,74,0.3)" : "none",
                         width:"100%",
                         display:"flex",flexDirection:"column",alignItems:"center",gap:2,
+                        opacity: isPending ? 0.85 : 1,
                       }}
                       title={label ? `R${n} · ${label}` : `R${n}`}>
                       <span style={{fontSize:13,fontWeight:600,letterSpacing:0.5}}>{mainText}</span>
@@ -1330,6 +1353,20 @@ function ScenarioEditor({ value, onChange, onSave, onCancel, busy, relayLabels =
         </button>
       </div>
     </div>
+  );
+}
+
+function Spinner({ size = 12, color = "#9ec8e0" }) {
+  return (
+    <span aria-hidden="true" style={{
+      display: "inline-block", width: size, height: size,
+      border: `2px solid ${color}55`,
+      borderTopColor: color,
+      borderRadius: "50%",
+      animation: "harasp 0.8s linear infinite",
+    }}>
+      <style>{`@keyframes harasp { to { transform: rotate(360deg); } }`}</style>
+    </span>
   );
 }
 
