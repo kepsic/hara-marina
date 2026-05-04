@@ -15,3 +15,4 @@ infra/marina-bridge/cmd/emtrak-forwarder/emtrak-forwarder-*
 
 # Private, owner-specific docs — never publish
 docs/private/
+.DS_Store
