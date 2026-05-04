@@ -1,6 +1,6 @@
 import { handleUpload } from "@vercel/blob/client";
 import { del } from "@vercel/blob";
-import { Redis } from "@upstash/redis";
+import { Redis } from "../../../lib/redis.js";
 import {
   verifySession,
   SESSION_COOKIE_NAME,
@@ -9,11 +9,7 @@ import {
 } from "../../../lib/auth";
 import { canViewBoat, norm } from "../../../lib/owners";
 
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN,
-  automaticDeserialization: false,
-});
+const redis = new Redis();
 
 const KEY = (slug) => `hara-photos:${slug}`;
 

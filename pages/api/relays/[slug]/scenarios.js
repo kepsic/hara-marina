@@ -1,12 +1,9 @@
 import { verifySession, SESSION_COOKIE_NAME } from "../../../../lib/auth";
 import { canViewBoat } from "../../../../lib/owners";
 import { publishCommand } from "../../../../lib/emqxAdmin";
-import { Redis } from "@upstash/redis";
+import { Redis } from "../../../../lib/redis.js";
 
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN,
-});
+const redis = new Redis();
 
 const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 const SCENARIOS_KEY = (slug) => `relay_scenarios:${slug}`;

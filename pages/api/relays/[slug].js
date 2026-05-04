@@ -7,13 +7,10 @@ import {
 import { canViewBoat } from "../../../lib/owners";
 import { getTelemetry } from "../../../lib/telemetryStore";
 import { publishCommand } from "../../../lib/emqxAdmin";
-import { Redis } from "@upstash/redis";
+import { Redis } from "../../../lib/redis.js";
 
 const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN,
-});
+const redis = new Redis();
 const RELAY_STATE_KEY = (slug) => `relay_state:${slug}`;
 
 function ownerAuthorized(req, slug) {

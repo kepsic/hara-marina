@@ -1,10 +1,6 @@
-import { Redis } from "@upstash/redis";
+import { Redis } from "../../lib/redis.js";
 
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN,
-  automaticDeserialization: false,
-});
+const redis = new Redis();
 
 export default async function handler(req, res) {
   const { key } = req.query;

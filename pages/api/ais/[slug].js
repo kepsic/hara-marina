@@ -7,24 +7,48 @@ import {
 import { canViewBoat } from "../../../lib/owners";
 import { fetchSnapshot, isConfigured as cacheConfigured } from "../../../lib/aisCacheClient";
 import { classifyMarinaState, MARINA } from "../../../lib/marina";
-import { Redis } from "@upstash/redis";
+import { Redis } from "../../../lib/redis.js";
 
 const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN,
-});
+const redis = new Redis();
 
-async function lookupMmsi(slug) {
+function normalizeShipId(v) {
+  if (v == null) return null;
+  const s = String(v).trim();
+  return /^\d+$/.test(s) ? s : null;
+}
+
+function safeMarineTrafficUrl(v) {
+  if (!v) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  return /^https:\/\/www\.marinetraffic\.com\//i.test(s) ? s : null;
+}
+
+function buildMarineTrafficUrl({ mmsi, shipId, explicitUrl }) {
+  if (explicitUrl) return explicitUrl;
+  if (shipId) return `https://www.marinetraffic.com/en/ais/details/ships/shipid:${shipId}`;
+  if (mmsi) return `https://www.marinetraffic.com/en/ais/details/ships/mmsi:${mmsi}`;
+  return null;
+}
+
+async function lookupBoatAisMeta(slug) {
   try {
     const v = await redis.get("hara-boats");
     const list = !v ? null : (typeof v === "string" ? JSON.parse(v) : v);
-    if (!Array.isArray(list)) return null;
+    if (!Array.isArray(list)) return { mmsi: null, shipId: null, explicitMarineTrafficUrl: null };
     const b = list.find((x) => norm(x.name) === slug);
-    return b?.mmsi ? String(b.mmsi).trim() : null;
+    const mmsi = b?.mmsi ? String(b.mmsi).trim() : null;
+    const shipId = normalizeShipId(
+      b?.shipid ?? b?.shipId ?? b?.marineTrafficShipId ?? b?.marinetraffic_shipid
+    );
+    const explicitMarineTrafficUrl = safeMarineTrafficUrl(
+      b?.marineTrafficUrl ?? b?.marinetrafficUrl ?? b?.marinetraffic_url ?? b?.mtUrl ?? b?.mt_url
+    );
+    return { mmsi, shipId, explicitMarineTrafficUrl };
   } catch {
-    return null;
+    return { mmsi: null, shipId: null, explicitMarineTrafficUrl: null };
   }
 }
 
@@ -47,7 +71,11 @@ export default async function handler(req, res) {
     return res.status(200).json({ configured: false, reason: "AIS_CACHE_URL not set" });
   }
 
-  const mmsi = await lookupMmsi(slug);
+  const boatMeta = await lookupBoatAisMeta(slug);
+  const mmsi = boatMeta.mmsi;
+  const shipId = boatMeta.shipId;
+  const explicitMarineTrafficUrl = boatMeta.explicitMarineTrafficUrl;
+  const marineTrafficUrl = buildMarineTrafficUrl({ mmsi, shipId, explicitUrl: explicitMarineTrafficUrl });
   if (!mmsi) {
     return res.status(200).json({ configured: false, reason: "boat has no mmsi" });
   }
@@ -57,6 +85,8 @@ export default async function handler(req, res) {
     return res.status(200).json({
       configured: true,
       mmsi,
+      shipId,
+      marineTrafficUrl,
       marina: MARINA,
       state: "no_signal",
       label: "No AIS signal yet",
@@ -68,6 +98,8 @@ export default async function handler(req, res) {
   return res.status(200).json({
     configured: true,
     mmsi,
+    shipId,
+    marineTrafficUrl,
     marina: MARINA,
     name: snap.name,
     lat: snap.lat,

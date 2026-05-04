@@ -6,12 +6,9 @@ import {
 } from "../../../lib/auth";
 import { canViewBoat } from "../../../lib/owners";
 import { getTelemetry } from "../../../lib/telemetryStore";
-import { Redis } from "@upstash/redis";
+import { Redis } from "../../../lib/redis.js";
 
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN,
-});
+const redis = new Redis();
 const RELAY_STATE_KEY = (slug) => `relay_state:${slug}`;
 
 export default async function handler(req, res) {
