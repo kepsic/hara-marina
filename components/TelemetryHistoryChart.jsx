@@ -493,7 +493,10 @@ export default function TelemetryHistoryChart({ slug, defaultRange = "24h", defa
           </Chip>
         ))}
         <span style={{ width: 12 }} />
-        {GROUPS.filter((g) => groupsWithData.has(g.key) || rows.length === 0).map((g) => (
+        {/* Only render group chips once data has loaded — otherwise we flash
+            chips (e.g. Power, Bilge) that this boat doesn't actually have,
+            then they vanish a moment later when rows arrive. */}
+        {!loading && !err && GROUPS.filter((g) => groupsWithData.has(g.key)).map((g) => (
           <Chip key={g.key} active={g.key === groupKey} onClick={() => setGroupKey(g.key)}>
             {g.label}
           </Chip>
@@ -512,7 +515,7 @@ export default function TelemetryHistoryChart({ slug, defaultRange = "24h", defa
         </span>
       </div>
 
-      {!loading && !err && present.length === 0 && groupKey !== "wind" && (
+      {!loading && !err && present.length === 0 && groupKey !== "wind" && groupsWithData.has(groupKey) && (
         <div style={{
           fontSize: 12, color: "#5a8aaa", padding: "24px 12px",
           border: "1px dashed rgba(126,171,200,0.18)", borderRadius: 8, textAlign: "center",

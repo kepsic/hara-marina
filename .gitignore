@@ -12,3 +12,6 @@ infra/ais-cache/ais-cache
 infra/marina-bridge/cmd/emtrak-forwarder/emtrak-forwarder
 infra/marina-bridge/cmd/emtrak-forwarder/emtrak-forwarder-*
 .vscode/mcp.json
+
+# Private, owner-specific docs — never publish
+docs/private/
