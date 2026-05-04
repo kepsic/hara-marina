@@ -347,6 +347,21 @@ export default function TelemetryHistoryChart({ slug, defaultRange = "24h", defa
     [group, rows],
   );
 
+  const dataSpan = useMemo(() => {
+    if (!rows.length) return null;
+    const ts = rows.map((r) => new Date(r.ts).getTime()).filter(isNum);
+    if (!ts.length) return null;
+    const first = Math.min(...ts);
+    const last = Math.max(...ts);
+    const spanMs = last - first;
+    let spanLabel;
+    if (spanMs < 60_000) spanLabel = `${Math.round(spanMs / 1000)}s`;
+    else if (spanMs < 3_600_000) spanLabel = `${Math.round(spanMs / 60_000)}m`;
+    else if (spanMs < 86_400_000) spanLabel = `${(spanMs / 3_600_000).toFixed(1)}h`;
+    else spanLabel = `${(spanMs / 86_400_000).toFixed(1)}d`;
+    return { first, last, spanLabel };
+  }, [rows]);
+
   return (
     <div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
@@ -362,8 +377,16 @@ export default function TelemetryHistoryChart({ slug, defaultRange = "24h", defa
           </Chip>
         ))}
         <span style={{ flex: 1 }} />
-        <span style={{ fontSize: 10, color: "#5a8aaa", alignSelf: "center" }}>
-          {loading ? "loading…" : err ? `error: ${err}` : `${rows.length} samples · last ${range.label}`}
+        <span style={{ fontSize: 10, color: "#5a8aaa", alignSelf: "center", textAlign: "right" }}>
+          {loading
+            ? "loading…"
+            : err
+              ? `error: ${err}`
+              : rows.length === 0
+                ? `no data in last ${range.label}`
+                : dataSpan
+                  ? `${rows.length} samples spanning ${dataSpan.spanLabel} (window ${range.label})`
+                  : `${rows.length} samples · last ${range.label}`}
         </span>
       </div>
 
