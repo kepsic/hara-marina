@@ -393,8 +393,16 @@ var fastPacketPGNs = map[uint32]bool{
 	129039: true, // AIS Class B Position
 	129040: true, // AIS Class B Extended Position
 	129041: true, // AIS Aids to Navigation (AtoN)
+	129540: true, // GPS Satellites in View
+	129542: true, // GPS Pseudo Range Noise Statistics
+	129547: true, // GPS Pseudo Range Error Statistics
 	129793: true, // AIS UTC and Date Report
 	129794: true, // AIS Class A Static
+	129797: true, // AIS Binary Broadcast
+	129798: true, // AIS SAR Aircraft Position Report
+	129801: true, // AIS Addressed Safety Related Message
+	129802: true, // AIS Safety Related Broadcast Message
+	129808: true, // DSC Call Information
 	129809: true, // AIS Class B Static, Part A (Name)
 	129810: true, // AIS Class B Static, Part B (Type, Callsign)
 }
