@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -115,8 +116,13 @@ func Load(path string) (*Config, error) {
 	if c.PublishInterval == 0 {
 		c.PublishInterval = 30 * time.Second
 	}
-	if c.Sources.Cerbo.Enabled && c.Sources.Cerbo.Broker == "" {
-		return nil, fmt.Errorf("cerbo source requires broker (vrm_id may be empty or \"auto\")")
+	if c.Sources.Cerbo.Enabled {
+		if c.Sources.Cerbo.Broker == "" {
+			return nil, fmt.Errorf("cerbo source requires CERBO_BROKER")
+		}
+		if c.Sources.Cerbo.VrmID == "" || strings.EqualFold(c.Sources.Cerbo.VrmID, "auto") {
+			return nil, fmt.Errorf("cerbo source requires an explicit CERBO_VRM_ID — auto-discovery is disabled to prevent pipeline cross-contamination")
+		}
 	}
 	if c.Sources.Ydwg.Enabled {
 		if c.Sources.Ydwg.Mode == "" {

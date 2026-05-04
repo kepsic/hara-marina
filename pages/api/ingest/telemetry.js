@@ -146,6 +146,13 @@ export default async function handler(req, res) {
     } catch {}
   }
 
+  // Slug is always authoritative from the MQTT topic "marina/<slug>/telemetry".
+  // The payload slug is only used as fallback (direct HTTP posts without a topic wrapper).
+  if (body && body._topic) {
+    const parts = String(body._topic).split("/");
+    if (parts[0] === "marina" && parts.length >= 2) body.slug = parts[1];
+  }
+
   // Allow extracting slug from MQTT topic "marina/<slug>/telemetry" if not in payload.
   if (body && !body.slug && body._topic) {
     const parts = String(body._topic).split("/");
