@@ -255,9 +255,7 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
   const posLat = isNum(tel.position?.lat) ? tel.position.lat : (isNum(ais?.lat) ? ais.lat : null);
   const posLon = isNum(tel.position?.lon) ? tel.position.lon : (isNum(ais?.lon) ? ais.lon : null);
   const posSource = isNum(tel.position?.lat) && isNum(tel.position?.lon) ? "Onboard GPS" : (isNum(ais?.lat) && isNum(ais?.lon) ? "AIS fallback" : null);
-  const seaTempC = isNum(tel.water_temp_c)
-    ? tel.water_temp_c
-    : (isNum(weather?.watertemperature) ? Number(weather.watertemperature) : null);
+  const seaTempC = isNum(tel.water_temp_c) ? tel.water_temp_c : null;
   const relays = tel?.relays?.bank1 || {};
 
   async function setRelay(relay, state) {
@@ -673,14 +671,14 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
         <Section title="🌬 Local Conditions · Loksa Station">
           {weather ? (
             <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
-              <Stat label="Wind" value={typeof weather.windspeed === "number" ? weather.windspeed.toFixed(1) : "—"} unit="m/s" color="#f0c040" big/>
-              <Stat label="Gust" value={typeof weather.windspeedmax === "number" ? weather.windspeedmax.toFixed(1) : "—"} unit="m/s"/>
-              <Stat label="Wind dir" value={typeof weather.winddirection === "number" ? `${Math.round(weather.winddirection)}°` : "—"} unit=""/>
-              <Stat label="Air temp" value={weather.airtemperature} unit="°C" color="#f0c040"/>
-              <Stat label="Sea temp" value={weather.watertemperature} unit="°C" color="#6ab0e8"/>
-              <Stat label="Sea level" value={weather.waterlevel ?? weather.waterlevel_eh2000} unit="cm" color="#6ab0e8"/>
-              <Stat label="Pressure" value={weather.airpressure} unit="hPa"/>
-              <Stat label="Humidity" value={weather.relativehumidity} unit="%"/>
+              <Stat label="Wind" value={typeof weather.windspeed === "number" ? weather.windspeed.toFixed(1) : null} unit="m/s" color="#f0c040" big/>
+              <Stat label="Gust" value={typeof weather.windspeedmax === "number" ? weather.windspeedmax.toFixed(1) : null} unit="m/s"/>
+              <Stat label="Wind dir" value={typeof weather.winddirection === "number" ? `${Math.round(weather.winddirection)}°` : null} unit=""/>
+              <Stat label="Air temp" value={isNum(weather.airtemperature) ? weather.airtemperature : null} unit="°C" color="#f0c040"/>
+              <Stat label="Sea temp" value={isNum(weather.watertemperature) ? weather.watertemperature : null} unit="°C" color="#6ab0e8"/>
+              <Stat label="Sea level" value={isNum(weather.waterlevel ?? weather.waterlevel_eh2000) ? (weather.waterlevel ?? weather.waterlevel_eh2000) : null} unit="cm" color="#6ab0e8"/>
+              <Stat label="Pressure" value={isNum(weather.airpressure) ? weather.airpressure : null} unit="hPa"/>
+              <Stat label="Humidity" value={isNum(weather.relativehumidity) ? weather.relativehumidity : null} unit="%"/>
             </div>
           ) : (
             <div style={{fontSize:11,color:"#5a8aaa"}}>◌ loading…</div>
