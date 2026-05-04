@@ -448,11 +448,16 @@ func parseLine(ctx context.Context, line string, bank int, snap *telemetry.Snaps
 		return
 	case 126996, 126720, 65284:
 		// Product information / proprietary transport, not mapped to telemetry fields.
+		// Log first occurrence per source address so we can identify devices.
+		key := fmt.Sprintf("prodinfo:%d:%d", pgn, srcAddr)
+		if _, loaded := seenUnhandledPGN.LoadOrStore(key, struct{}{}); !loaded {
+			slog.Info("device info", "source", "ydwg", "pgn", pgn, "src_addr", srcAddr, "len", len(data), "payload", fmt.Sprintf("% X", data))
+		}
 		return
 	case 127508:
 		handleBattery(data, snap)
 	case 127501:
-		handleBinarySwitchBankStatus(data, bank, snap)
+		handleBinarySwitchBankStatus(data, bank, snap, srcAddr)
 	case 127250:
 		handleHeading(data, snap)
 	case 127257:
@@ -573,14 +578,14 @@ func handleBattery(d []byte, snap *telemetry.Snapshot) {
 // d[0] = bank instance number, d[1..] packed 2-bit states per channel:
 // 0=Off, 1=On, 2=Error, 3=Unavailable.
 // Only updates the snapshot when d[0] matches the configured relay bank.
-func handleBinarySwitchBankStatus(d []byte, bank int, snap *telemetry.Snapshot) {
+func handleBinarySwitchBankStatus(d []byte, bank int, snap *telemetry.Snapshot, srcAddr uint8) {
 	if len(d) < 2 {
 		return
 	}
 	srcBank := int(d[0])
 	// Always log so it's visible whether the YDCC-04 reports the bank we
 	// expect, and whether its state actually changes after we send 127502.
-	slog.Debug("binary switch bank status", "source", "ydwg", "pgn", 127501, "bank", srcBank, "configured_bank", bank, "raw", fmt.Sprintf("% X", d))
+	slog.Debug("binary switch bank status", "source", "ydwg", "pgn", 127501, "src_addr", srcAddr, "bank", srcBank, "configured_bank", bank, "raw", fmt.Sprintf("% X", d))
 	if srcBank != bank {
 		return
 	}
