@@ -61,10 +61,11 @@ type CerboConfig struct {
 //	                  outgoing connection (use YDNR "Enable the outgoing
 //	                  connection" with Server #2 set to TCP/RAW)
 type YdwgConfig struct {
-	Enabled bool   `yaml:"enabled"`
-	Mode    string `yaml:"mode"`    // client|server (default client)
-	Address string `yaml:"address"` // host:port for client mode
-	Listen  string `yaml:"listen"`  // host:port for server mode (e.g. :1457)
+	Enabled   bool   `yaml:"enabled"`
+	Mode      string `yaml:"mode"`       // client|server (default client)
+	Address   string `yaml:"address"`    // host:port for client mode
+	Listen    string `yaml:"listen"`     // host:port for server mode (e.g. :1457)
+	RelayBank int    `yaml:"relay_bank"` // YDCC-04 bank instance number for PGN 127501/127502 (1-252, default 1)
 }
 
 // N0183Config: read NMEA 0183 sentences from a TCP server (line-oriented,
@@ -125,6 +126,9 @@ func Load(path string) (*Config, error) {
 		}
 	}
 	if c.Sources.Ydwg.Enabled {
+		if c.Sources.Ydwg.RelayBank == 0 {
+			c.Sources.Ydwg.RelayBank = 1
+		}
 		if c.Sources.Ydwg.Mode == "" {
 			c.Sources.Ydwg.Mode = "client"
 		}
@@ -213,6 +217,11 @@ func applyEnv(c *Config) {
 	}
 	if v := os.Getenv("YDWG_LISTEN"); v != "" {
 		c.Sources.Ydwg.Listen = v
+	}
+	if v := os.Getenv("YDWG_RELAY_BANK"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 1 && n <= 252 {
+			c.Sources.Ydwg.RelayBank = n
+		}
 	}
 	if v := os.Getenv("N0183_ENABLED"); v == "true" || v == "1" {
 		c.Sources.N0183.Enabled = true

@@ -22,6 +22,9 @@ sources:
     # "Servers", enable Server #1 with type=RAW on the port below.
     enabled: false
     address: "192.168.1.10:1457"
+    # relay_bank: YDCC-04 Circuit Control bank instance number (1-252, default 1).
+    # Must match the bank number configured on the YDCC-04 device itself.
+    # relay_bank: 1
 
   # NMEA 0183 over TCP. Use this for the YDNR-02 Server #1 (default port
   # 1456, data protocol NMEA 0183) — the same one Web Gauges depends on, so

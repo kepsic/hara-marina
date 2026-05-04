@@ -114,12 +114,18 @@ func writeRawFrame(ctx context.Context, canID uint32, data []byte) error {
 
 // WriteRelay sends a best-effort N2K Binary Switch Bank Control command
 // (PGN 127502) through the active YDWG RAW TCP connection.
+// It targets the YDCC-04 bank configured via cfg.RelayBank (default 1).
 func WriteRelay(ctx context.Context, cfg config.YdwgConfig, relayIndex int, on bool) error {
 	if !cfg.Enabled {
 		return fmt.Errorf("ydwg source disabled")
 	}
 	if relayIndex < 1 || relayIndex > 4 {
 		return fmt.Errorf("relay index must be 1..4")
+	}
+
+	bank := cfg.RelayBank
+	if bank == 0 {
+		bank = 1
 	}
 
 	stateByte := byte(0xFF) // default: leave channels unchanged/unavailable
@@ -130,7 +136,7 @@ func WriteRelay(ctx context.Context, cfg config.YdwgConfig, relayIndex int, on b
 	}
 	stateByte = (stateByte & ^(byte(0x03) << shift)) | (state << shift)
 
-	payload := []byte{0x01, stateByte, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+	payload := []byte{byte(bank), stateByte, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 	canID := canIDForPGN(127502, 0xFA, 3)
 	if err := writeRawFrame(ctx, canID, payload); err != nil {
 		return err
@@ -150,18 +156,22 @@ func WriteRelay(ctx context.Context, cfg config.YdwgConfig, relayIndex int, on b
 // The optional pusher (may be nil) receives decoded AIS Class B position fixes
 // from any transponder on the boat's N2K bus (e.g. em-trak B924).
 func Run(ctx context.Context, cfg config.YdwgConfig, snap *telemetry.Snapshot, pusher *aisingest.Pusher) error {
+	bank := cfg.RelayBank
+	if bank == 0 {
+		bank = 1
+	}
 	mode := cfg.Mode
 	if mode == "" {
 		mode = "client"
 	}
 	if mode == "server" {
-		return runServer(ctx, cfg.Listen, snap, pusher)
+		return runServer(ctx, cfg.Listen, bank, snap, pusher)
 	}
 	for {
 		if ctx.Err() != nil {
 			return nil
 		}
-		if err := runClient(ctx, cfg.Address, snap, pusher); err != nil {
+		if err := runClient(ctx, cfg.Address, bank, snap, pusher); err != nil {
 			log.Printf("[ydwg] %v — reconnecting in 5s", err)
 			select {
 			case <-ctx.Done():
@@ -172,7 +182,7 @@ func Run(ctx context.Context, cfg config.YdwgConfig, snap *telemetry.Snapshot, p
 	}
 }
 
-func runClient(ctx context.Context, addr string, snap *telemetry.Snapshot, pusher *aisingest.Pusher) error {
+func runClient(ctx context.Context, addr string, bank int, snap *telemetry.Snapshot, pusher *aisingest.Pusher) error {
 	d := net.Dialer{Timeout: 10 * time.Second}
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
@@ -185,14 +195,14 @@ func runClient(ctx context.Context, addr string, snap *telemetry.Snapshot, pushe
 
 	go func() { <-ctx.Done(); conn.Close() }()
 
-	return readFrames(ctx, conn, snap, pusher)
+	return readFrames(ctx, conn, bank, snap, pusher)
 }
 
 // runServer listens on listen and serves YDNR's outbound connections one at a
 // time. YDNR opens a single TCP connection and streams RAW frames; if it drops
 // we accept the next one. Old connections are torn down so we never have two
 // streams interleaving.
-func runServer(ctx context.Context, listen string, snap *telemetry.Snapshot, pusher *aisingest.Pusher) error {
+func runServer(ctx context.Context, listen string, bank int, snap *telemetry.Snapshot, pusher *aisingest.Pusher) error {
 	var lc net.ListenConfig
 	ln, err := lc.Listen(ctx, "tcp", listen)
 	if err != nil {
@@ -233,7 +243,7 @@ func runServer(ctx context.Context, listen string, snap *telemetry.Snapshot, pus
 		swapConn(conn)
 		go func(c net.Conn) {
 			defer c.Close()
-			if err := readFrames(ctx, c, snap, pusher); err != nil {
+			if err := readFrames(ctx, c, bank, snap, pusher); err != nil {
 				log.Printf("[ydwg] %s closed: %v", c.RemoteAddr(), err)
 			} else {
 				log.Printf("[ydwg] %s closed", c.RemoteAddr())
@@ -243,14 +253,14 @@ func runServer(ctx context.Context, listen string, snap *telemetry.Snapshot, pus
 }
 
 // readFrames consumes RAW lines from conn until EOF or context cancellation.
-func readFrames(ctx context.Context, conn net.Conn, snap *telemetry.Snapshot, pusher *aisingest.Pusher) error {
+func readFrames(ctx context.Context, conn net.Conn, bank int, snap *telemetry.Snapshot, pusher *aisingest.Pusher) error {
 	reasm := newFastPacketReassembler()
 	names := newAisNameCache()
 
 	sc := bufio.NewScanner(conn)
 	sc.Buffer(make([]byte, 0, 1024), 64*1024)
 	for sc.Scan() {
-		parseLine(ctx, sc.Text(), snap, reasm, names, pusher)
+		parseLine(ctx, sc.Text(), bank, snap, reasm, names, pusher)
 	}
 	clearTxConn(conn)
 	return sc.Err()
@@ -269,7 +279,7 @@ var fastPacketPGNs = map[uint32]bool{
 }
 
 // parseLine parses one RAW frame. Lines that don't match are silently dropped.
-func parseLine(ctx context.Context, line string, snap *telemetry.Snapshot, reasm *fastPacketReassembler, names *aisNameCache, pusher *aisingest.Pusher) {
+func parseLine(ctx context.Context, line string, bank int, snap *telemetry.Snapshot, reasm *fastPacketReassembler, names *aisNameCache, pusher *aisingest.Pusher) {
 	parts := strings.Fields(strings.TrimSpace(line))
 	if len(parts) < 4 {
 		return
@@ -325,7 +335,7 @@ func parseLine(ctx context.Context, line string, snap *telemetry.Snapshot, reasm
 	case 127508:
 		handleBattery(data, snap)
 	case 127501:
-		handleBinarySwitchBankStatus(data, snap)
+		handleBinarySwitchBankStatus(data, bank, snap)
 	case 127250:
 		handleHeading(data, snap)
 	case 127257:
@@ -443,14 +453,17 @@ func handleBattery(d []byte, snap *telemetry.Snapshot) {
 }
 
 // PGN 127501: Binary Switch Bank Status.
-// d[0]=instance, d[1]=bank, d[2..] packed 2-bit states per channel:
+// d[0] = bank instance number, d[1..] packed 2-bit states per channel:
 // 0=Off, 1=On, 2=Error, 3=Unavailable.
-func handleBinarySwitchBankStatus(d []byte, snap *telemetry.Snapshot) {
+// Only updates the snapshot when d[0] matches the configured relay bank.
+func handleBinarySwitchBankStatus(d []byte, bank int, snap *telemetry.Snapshot) {
 	if len(d) < 2 {
 		return
 	}
-	// Yacht Devices stream puts packed 2-bit channel states starting at d[1].
-	// Sample seen: 01 00 FF FF ... => first channels are OFF.
+	if int(d[0]) != bank {
+		return
+	}
+	// Packed 2-bit channel states starting at d[1].
 	for ch := 1; ch <= 4; ch++ {
 		bit := (ch - 1) * 2
 		idx := 1 + (bit / 8)
