@@ -13,6 +13,7 @@ import BoatPhotos from "../components/BoatPhotos";
 import BoatWindRose from "../components/BoatWindRose";
 import HeadingClock from "../components/HeadingClock";
 import GaugeDial from "../components/GaugeDial";
+import WaterDepthBar from "../components/WaterDepthBar";
 import TelemetryHistoryChart from "../components/TelemetryHistoryChart";
 
 const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -931,14 +932,9 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
                 gap:12,
               }}>
                 {isNum(tel?.water_depth_m) && (
-                  <GaugeDial
-                    label="Water depth" value={tel.water_depth_m} unit="m"
-                    min={0} max={30} digits={1} color="#6ab0e8"
-                    bands={[
-                      { from:0, to:2, color:"#e08040" },
-                      { from:2, to:5, color:"#f0c040" },
-                    ]}
-                  />
+                  <div style={{gridColumn:"1 / -1"}}>
+                    <WaterDepthBar slug={slug} value={tel.water_depth_m} hours={24} />
+                  </div>
                 )}
                 {hasBilgeWater && (
                   <GaugeDial
