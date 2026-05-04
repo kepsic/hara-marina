@@ -140,7 +140,7 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
     return () => { alive = false; clearInterval(t); };
   }, [slug]);
 
-  // Telemetry refresh — full replace, never merge live with demo.
+  // Telemetry refresh.
   useEffect(() => {
     if (accessKind === "pin-locked") return;
     let alive = true;
@@ -249,7 +249,6 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
     ? `${tel.last_seen_ago}s ago`
     : `${Math.round(tel.last_seen_ago / 60)} min ago`;
   const fresh = tel.last_seen_ago < 120;
-  const isDemo = tel.source === "demo";
   const isOwnerView = accessKind === "owner";
   const hasBilgeWater = isNum(tel.bilge?.water_cm);
   const hasBilgePump = isNum(tel.bilge?.pump_cycles_24h);
@@ -498,14 +497,7 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
               <div style={{fontSize:9,color:fresh?"#2a9a4a":"#a08040",letterSpacing:1,marginTop:1}}>
                 {fresh?"● live":"◌ stale"} · {lastSeen}
               </div>
-              {isDemo && (
-                <div style={{
-                  fontSize:8,letterSpacing:2,marginTop:3,color:"#e08040",
-                  border:"1px solid #e0804055",borderRadius:3,padding:"1px 5px",display:"inline-block",
-                }} title="This boat has no live telemetry feed yet — values shown are simulated.">
-                  DEMO DATA
-                </div>
-              )}
+
             </div>
           </div>
         </div>
@@ -670,7 +662,7 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
         )}
 
         {/* Wind — from boat sensors when available, falls back to weather station */}
-        <BoatWindSection tel={tel} ais={ais} weather={weather} isDemo={isDemo} />
+        <BoatWindSection tel={tel} ais={ais} weather={weather} />
 
         {/* AIS / Marina state */}
         <Section title="📡 AIS · Marina Status">
@@ -733,7 +725,7 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
 
         {/* ---- Telemetry tab ---- */}
         {activeTab === "telemetry" && (<>
-        <Section title="🛰 Telemetry" badge={isDemo ? "DEMO" : null}>
+        <Section title="🛰 Telemetry">
           {(isNum(tel.battery?.voltage) || isNum(tel.battery?.percent) || typeof tel.shore_power === "boolean") && (
             <TelemetryGroup title="Electrical">
               {isNum(tel.battery?.voltage) && (
@@ -1111,7 +1103,7 @@ function TelemetryGroup({ title, children, style }) {
   );
 }
 
-function BoatWindSection({ tel, ais, weather, isDemo }) {
+function BoatWindSection({ tel, ais, weather }) {
   const wind = tel?.wind || {};
   const trueDir = isNum(wind?.true?.direction_deg) ? wind.true.direction_deg : null;
   const trueKn  = isNum(wind?.true?.speed_kn) ? wind.true.speed_kn : null;
@@ -1140,13 +1132,13 @@ function BoatWindSection({ tel, ais, weather, isDemo }) {
   const showTrueKn  = trueKn  ?? (usingFallback ? fallbackTrueKn  : null);
 
   const sourceLabel = hasBoatWind
-    ? (isDemo ? "Simulated" : "Boat sensor (NMEA2000 push)")
+    ? "Boat sensor (NMEA2000 push)"
     : (fallbackTrueDir !== null ? "Loksa weather station" : "No data");
 
   return (
     <Section
       title="🌬 Wind"
-      badge={isDemo ? "DEMO" : (usingFallback && fallbackTrueDir !== null ? "WEATHER STATION" : null)}
+      badge={usingFallback && fallbackTrueDir !== null ? "WEATHER STATION" : null}
     >
       <div style={{display:"flex",flexWrap:"wrap",gap:18,alignItems:"flex-start"}}>
         <div style={{

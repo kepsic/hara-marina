@@ -1,4 +1,3 @@
-import { makeTelemetry } from "../../../lib/telemetry";
 import {
   verifySession,
   SESSION_COOKIE_NAME,
@@ -78,25 +77,7 @@ export default async function handler(req, res) {
     console.error("telemetry read failed:", e);
   }
 
-  // 2. Fallback: synthesised demo telemetry (so the UI is never empty before
-  //    the boat's MQTT client is online).
-  let boats = null;
-  try {
-    const r = await fetch(
-      `${req.headers["x-forwarded-proto"] || "https"}://${req.headers.host}/api/data?key=hara-boats`
-    );
-    const j = await r.json();
-    boats = j.value ? JSON.parse(j.value) : null;
-  } catch {}
-
-  if (!boats) {
-    const { INITIAL_BOATS } = await import("../../../lib/constants");
-    boats = INITIAL_BOATS;
-  }
-
-  const boat = boats.find((b) => norm(b.name) === cleanSlug);
-  if (!boat) return res.status(404).json({ error: "boat not found" });
-
+  // No live telemetry available.
   res.setHeader("Cache-Control", "private, no-store");
-  return res.status(200).json({ ...makeTelemetry(boat), source: "demo" });
+  return res.status(404).json({ error: "no telemetry" });
 }
