@@ -1553,7 +1553,7 @@ function AisStatus({ ais }) {
         AIS lookup not configured for this boat
         {ais.reason ? <span style={{color:"#3a5a6a"}}> · {ais.reason}</span> : null}
         <div style={{marginTop:4,fontSize:10,color:"#3a5a6a"}}>
-          Add an <code>mmsi</code> field to the boat record (and set <code>AISSTREAM_API_KEY</code>) to enable.
+          Open ⚙ Settings → Identity → AIS MMSI to enable.
         </div>
       </div>
     );
