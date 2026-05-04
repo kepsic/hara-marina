@@ -631,14 +631,14 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
         )}
 
         {/* Quick live stats on overview */}
-        {(isNum(tel?.battery?.voltage) || isNum(seaTempC) || isNum(tel?.dewpoint_c) || isNum(tel?.cabin?.humidity_pct)) && (
+        {((!boat.no_battery && isNum(tel?.battery?.voltage)) || isNum(seaTempC) || isNum(tel?.dewpoint_c) || isNum(tel?.cabin?.humidity_pct)) && (
           <Section title="📊 Live Snapshot">
             <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
-              {isNum(tel?.battery?.voltage) && (
+              {!boat.no_battery && isNum(tel?.battery?.voltage) && (
                 <Stat label="Battery" value={fmt(tel.battery.voltage, 2)} unit="V"
                   color={tel.battery.voltage < 12.0 ? "#e08040" : "#2a9a4a"} big/>
               )}
-              {isNum(tel?.battery?.percent) && (
+              {!boat.no_battery && isNum(tel?.battery?.percent) && (
                 <Stat label="Charge" value={Math.round(tel.battery.percent)} unit="%"
                   color={tel.battery.percent < 30 ? "#e08040" : "#9ec8e0"}/>
               )}
@@ -724,13 +724,13 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
         {/* ---- Telemetry tab ---- */}
         {activeTab === "telemetry" && (<>
         <Section title="🛰 Telemetry">
-          {(isNum(tel?.battery?.voltage) || isNum(tel?.battery?.percent) || typeof tel?.shore_power === "boolean") && (
+          {(!boat.no_battery && (isNum(tel?.battery?.voltage) || isNum(tel?.battery?.percent))) || typeof tel?.shore_power === "boolean" ? (
             <TelemetryGroup title="Electrical">
-              {isNum(tel?.battery?.voltage) && (
+              {!boat.no_battery && isNum(tel?.battery?.voltage) && (
                 <Stat label="Battery" value={fmt(tel.battery.voltage, 2)} unit="V"
                   color={tel.battery.voltage < 12.0 ? "#e08040" : "#2a9a4a"} big/>
               )}
-              {isNum(tel?.battery?.percent) && (
+              {!boat.no_battery && isNum(tel?.battery?.percent) && (
                 <Stat label="Battery charge" value={Math.round(tel.battery.percent)} unit="%"
                   color={tel.battery.percent < 30 ? "#e08040" : "#9ec8e0"}/>
               )}
@@ -739,7 +739,7 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
                   color={tel.shore_power ? "#2a9a4a" : "#a08040"}/>
               )}
             </TelemetryGroup>
-          )}
+          ) : null}
 
           {(isNum(tel?.ac?.voltage_v) || isNum(tel?.ac?.current_a) || isNum(tel?.ac?.power_w) || isNum(tel?.ac?.energy_kwh_total) || isNum(tel?.ac?.energy_kwh_day) || isNum(tel?.ac?.energy_kwh_month) || isNum(tel?.ac?.energy_kwh_year)) && (
             <TelemetryGroup title="AC & Energy" style={{marginTop:12}}>
