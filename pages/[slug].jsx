@@ -610,29 +610,71 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
         {activeTab === "overview" && (<>
 
         {/* Quick live stats on overview */}
-        {((!boat.no_battery && isNum(tel?.battery?.voltage)) || isNum(seaTempC) || isNum(tel?.dewpoint_c) || isNum(tel?.cabin?.humidity_pct)) && (
+        {((!boat.no_battery && isNum(tel?.battery?.voltage)) || isNum(seaTempC) || isNum(tel?.dewpoint_c) || isNum(tel?.cabin?.humidity_pct) || isNum(tel?.cabin?.temperature_c)) && (
           <Section title="📊 Live Snapshot">
-            <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
+            <div style={{
+              display:"grid",
+              gridTemplateColumns:"repeat(auto-fit, minmax(200px, 1fr))",
+              gap:12,
+            }}>
               {!boat.no_battery && isNum(tel?.battery?.voltage) && (
-                <Stat label="Battery" value={fmt(tel.battery.voltage, 2)} unit="V"
-                  color={tel.battery.voltage < 12.0 ? "#e08040" : "#2a9a4a"} big/>
+                <GaugeDial
+                  label="Battery" value={tel.battery.voltage} unit="V"
+                  min={11} max={14.5} digits={2}
+                  color={tel.battery.voltage < 12.0 ? "#e08040" : "#2a9a4a"}
+                  bands={[
+                    { from:11,    to:12.0, color:"#e08040" },
+                    { from:12.4,  to:13.6, color:"#2a9a4a" },
+                  ]}
+                />
               )}
               {!boat.no_battery && isNum(tel?.battery?.percent) && (
-                <Stat label="Charge" value={Math.round(tel.battery.percent)} unit="%"
-                  color={tel.battery.percent < 30 ? "#e08040" : "#9ec8e0"}/>
+                <GaugeDial
+                  label="Charge" value={tel.battery.percent} unit="%"
+                  min={0} max={100} digits={0}
+                  color={tel.battery.percent < 30 ? "#e08040" : "#9ec8e0"}
+                  bands={[
+                    { from:0,  to:30,  color:"#e08040" },
+                    { from:60, to:100, color:"#2a9a4a" },
+                  ]}
+                />
               )}
               {isNum(tel?.cabin?.temperature_c) && (
-                <Stat label="Cabin temp" value={fmt(tel.cabin.temperature_c, 1)} unit="°C" color="#f0c040"/>
+                <GaugeDial
+                  label="Cabin temp" value={tel.cabin.temperature_c} unit="°C"
+                  min={-10} max={40} digits={1} color="#f0c040"
+                  bands={[
+                    { from:-10, to:5,  color:"#6ab0e8" },
+                    { from:18,  to:26, color:"#2a9a4a" },
+                    { from:30,  to:40, color:"#e08040" },
+                  ]}
+                />
               )}
               {isNum(tel?.cabin?.humidity_pct) && (
-                <Stat label="Humidity" value={Math.round(tel.cabin.humidity_pct)} unit="%"/>
+                <GaugeDial
+                  label="Humidity" value={tel.cabin.humidity_pct} unit="%"
+                  min={0} max={100} digits={0} color="#9ec8e0"
+                  bands={[
+                    { from:40, to:60,  color:"#2a9a4a" },
+                    { from:75, to:100, color:"#e08040" },
+                  ]}
+                />
               )}
               {isNum(tel?.dewpoint_c) && (
-                <Stat label="Dew point" value={fmt(tel.dewpoint_c, 1)} unit="°C" color="#9ec8e0"
-                  title="Computed via Magnus formula from cabin temp + humidity when sensor not available"/>
+                <GaugeDial
+                  label="Dew point" value={tel.dewpoint_c} unit="°C"
+                  min={-10} max={30} digits={1} color="#9ec8e0"
+                />
               )}
               {isNum(seaTempC) && (
-                <Stat label="Sea temp" value={fmt(seaTempC, 1)} unit="°C" color="#6ab0e8"/>
+                <GaugeDial
+                  label="Sea temp" value={seaTempC} unit="°C"
+                  min={0} max={30} digits={1} color="#6ab0e8"
+                  bands={[
+                    { from:0,  to:10, color:"#6ab0e8" },
+                    { from:18, to:25, color:"#2a9a4a" },
+                  ]}
+                />
               )}
             </div>
           </Section>
@@ -1289,25 +1331,45 @@ function BoatWindSection({ tel, ais, weather }) {
             {sourceLabel}
           </div>
         </div>
-        <div style={{flex:"1 1 220px",display:"flex",flexWrap:"wrap",gap:12,alignContent:"flex-start"}}>
-          <Stat label={mode}
-            value={isNum(modeAng) ? `${modeAng > 0 ? "▶" : "◀"} ${Math.round(Math.abs(modeAng))}°` : null}
-            unit="" color="#6ad4e8"/>
-          <Stat label={`${mode} speed`}
-            value={isNum(modeKn) ? knToMs(modeKn).toFixed(1) : null}
-            unit="m/s" color="#6ad4e8"/>
-          <Stat label="True wind dir"
-            value={isNum(showTrueDir) ? `${Math.round(showTrueDir)}°` : null}
-            unit="" color="#f0c040"/>
-          <Stat label="True wind speed"
-            value={isNum(showTrueKn) ? knToMs(showTrueKn).toFixed(1) : null}
-            unit="m/s" color="#f0c040"/>
-          <Stat label="Heading"
-            value={isNum(heading) ? `${Math.round(heading)}°` : null}
-            unit=""/>
-          <Stat label="Course (COG)"
-            value={isNum(cog) ? `${Math.round(cog)}°` : null}
-            unit=""/>
+        {(isNum(heading) || isNum(cog)) && (
+          <div style={{
+            background:"linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
+            border:"1px solid rgba(126,171,200,0.18)",borderRadius:8,padding:"14px",
+          }}>
+            <HeadingClock headingDeg={heading} cogDeg={cog} size={220} />
+          </div>
+        )}
+        <div style={{flex:"1 1 240px",display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))",gap:12,alignContent:"flex-start"}}>
+          {isNum(modeKn) && (
+            <GaugeDial
+              label={`${mode} speed`} value={knToMs(modeKn)} unit="m/s"
+              min={0} max={25} digits={1} color="#6ad4e8"
+              bands={[
+                { from:0,  to:3,  color:"#2a9a4a" },
+                { from:12, to:18, color:"#f0c040" },
+                { from:18, to:25, color:"#e08040" },
+              ]}
+            />
+          )}
+          {isNum(showTrueKn) && (
+            <GaugeDial
+              label="True wind speed" value={knToMs(showTrueKn)} unit="m/s"
+              min={0} max={25} digits={1} color="#f0c040"
+              bands={[
+                { from:0,  to:3,  color:"#2a9a4a" },
+                { from:12, to:18, color:"#f0c040" },
+                { from:18, to:25, color:"#e08040" },
+              ]}
+            />
+          )}
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            <Stat label={mode}
+              value={isNum(modeAng) ? `${modeAng > 0 ? "▶" : "◀"} ${Math.round(Math.abs(modeAng))}°` : null}
+              unit="" color="#6ad4e8"/>
+            <Stat label="True wind dir"
+              value={isNum(showTrueDir) ? `${Math.round(showTrueDir)}°` : null}
+              unit="" color="#f0c040"/>
+          </div>
         </div>
       </div>
       <div style={{fontSize:10,color:"#5a8aaa",marginTop:10,lineHeight:1.5}}>
