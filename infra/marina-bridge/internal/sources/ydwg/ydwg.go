@@ -73,6 +73,10 @@ func getTxConn() net.Conn {
 	return txConn
 }
 
+// ourSrcAddr is the N2K source address we claim on the bus.
+// 0xFA is in the dynamic range and chosen to avoid common defaults.
+const ourSrcAddr uint8 = 0xFA
+
 func canIDForPGN(pgn uint32, src uint8, priority uint8) uint32 {
 	pf := uint8((pgn >> 8) & 0xFF)
 	ps := uint8(pgn & 0xFF)
@@ -81,6 +85,56 @@ func canIDForPGN(pgn uint32, src uint8, priority uint8) uint32 {
 		ps = 0xFF // global destination for PDU1
 	}
 	return uint32(priority&0x7)<<26 | uint32(dp)<<24 | uint32(pf)<<16 | uint32(ps)<<8 | uint32(src)
+}
+
+// addressClaimPayload builds the 8-byte PGN 60928 ISO Address Claim.
+// NMEA 2000 devices typically ignore commands (e.g. PGN 127502) from a
+// source address that has not announced itself with this PGN.
+//
+// Identity fields (per ISO 11783-5 / NMEA 2000 Appendix D):
+//
+//	bytes 0..3 (LE):
+//	  bits 0..20  Unique Number       (21 bits)
+//	  bits 21..31 Manufacturer Code   (11 bits)
+//	byte 4:
+//	  bits 0..2   Device Instance Lower
+//	  bits 3..7   Device Instance Upper / ECU Instance
+//	byte 5:       Device Function     (8 bits)
+//	byte 6:
+//	  bit 0       Reserved (1)
+//	  bits 1..7   Device Class        (7 bits)
+//	byte 7:
+//	  bits 0..3   System Instance
+//	  bits 4..6   Industry Group      (4 = Marine)
+//	  bit 7       Self-Configurable Address (1)
+func addressClaimPayload() []byte {
+	const (
+		uniqueNumber     uint32 = 0x12345 // arbitrary, fits in 21 bits
+		manufacturerCode uint32 = 2046    // 2046 is the "experimental / personal use" range
+		deviceInstance   uint8  = 0
+		deviceFunction   uint8  = 130 // PC Gateway
+		deviceClass      uint8  = 25  // Internetwork Device
+		systemInstance   uint8  = 0
+		industryGroup    uint8  = 4 // Marine
+	)
+	identity := (uniqueNumber & 0x1FFFFF) | ((manufacturerCode & 0x7FF) << 21)
+	return []byte{
+		byte(identity & 0xFF),
+		byte((identity >> 8) & 0xFF),
+		byte((identity >> 16) & 0xFF),
+		byte((identity >> 24) & 0xFF),
+		deviceInstance,
+		deviceFunction,
+		0x01 | (deviceClass << 1), // bit0 reserved=1, bits1..7=class
+		(systemInstance & 0x0F) | ((industryGroup & 0x07) << 4) | 0x80,
+	}
+}
+
+// sendAddressClaim transmits PGN 60928 from ourSrcAddr to the global address.
+// Priority 6 per spec; PGN 60928 is PDU1 so destination 0xFF is encoded in canID.
+func sendAddressClaim(ctx context.Context) error {
+	canID := canIDForPGN(60928, ourSrcAddr, 6)
+	return writeRawFrame(ctx, canID, addressClaimPayload())
 }
 
 func writeRawFrame(ctx context.Context, canID uint32, data []byte) error {
@@ -137,14 +191,60 @@ func WriteRelay(ctx context.Context, cfg config.YdwgConfig, relayIndex int, on b
 	stateByte = (stateByte & ^(byte(0x03) << shift)) | (state << shift)
 
 	payload := []byte{byte(bank), stateByte, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
-	canID := canIDForPGN(127502, 0xFA, 3)
-	slog.Debug("relay write attempt", "source", "ydwg", "pgn", 127502, "relay", relayIndex, "state", on, "bank", bank, "tx_conn", getTxConn() != nil)
+	canID := canIDForPGN(127502, ourSrcAddr, 3)
+	slog.Debug("relay write attempt", "source", "ydwg", "pgn", 127502, "relay", relayIndex, "state", on, "bank", bank, "src", ourSrcAddr, "tx_conn", getTxConn() != nil)
+	// Re-announce ourselves immediately before each command. Some N2K
+	// devices (including the YDCC-04) silently drop commands from a
+	// source address whose claim they have not seen recently.
+	if err := sendAddressClaim(ctx); err != nil {
+		slog.Warn("address claim before relay write failed", "source", "ydwg", "err", err)
+	}
 	if err := writeRawFrame(ctx, canID, payload); err != nil {
 		slog.Error("relay write failed", "source", "ydwg", "relay", relayIndex, "state", on, "err", err)
 		return err
 	}
-	slog.Info("relay control sent", "source", "ydwg", "pgn", 127502, "relay", relayIndex, "state", on, "bank", bank)
+	slog.Info("relay control sent", "source", "ydwg", "pgn", 127502, "relay", relayIndex, "state", on, "bank", bank, "src", ourSrcAddr)
 	return nil
+}
+
+// addressClaimLoop announces our N2K identity on the bus as soon as a TX
+// connection is available, then every 60s. Returns when ctx is cancelled.
+func addressClaimLoop(ctx context.Context) {
+	tryClaim := func(initial bool) {
+		if getTxConn() == nil {
+			return
+		}
+		if err := sendAddressClaim(ctx); err != nil {
+			if initial {
+				slog.Warn("initial address claim failed", "source", "ydwg", "err", err)
+			} else {
+				slog.Debug("periodic address claim failed", "source", "ydwg", "err", err)
+			}
+			return
+		}
+		if initial {
+			slog.Info("address claim sent", "source", "ydwg", "src", ourSrcAddr)
+		}
+	}
+	// Poll briefly for an initial claim once the connection is up.
+	initial := time.NewTicker(500 * time.Millisecond)
+	defer initial.Stop()
+	periodic := time.NewTicker(60 * time.Second)
+	defer periodic.Stop()
+	var lastClaimed net.Conn
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-initial.C:
+			if c := getTxConn(); c != nil && c != lastClaimed {
+				tryClaim(true)
+				lastClaimed = c
+			}
+		case <-periodic.C:
+			tryClaim(false)
+		}
+	}
 }
 
 // Run reads RAW frames from a YDWG-02 / YDEN-02 / YDNR-02 gateway over TCP.
@@ -195,6 +295,10 @@ func runClient(ctx context.Context, addr string, bank int, snap *telemetry.Snaps
 	defer clearTxConn(conn)
 	slog.Info("connected to gateway", "source", "ydwg", "addr", addr)
 
+	claimCtx, cancelClaim := context.WithCancel(ctx)
+	defer cancelClaim()
+	go addressClaimLoop(claimCtx)
+
 	go func() { <-ctx.Done(); conn.Close() }()
 
 	return readFrames(ctx, conn, bank, snap, pusher)
@@ -214,6 +318,7 @@ func runServer(ctx context.Context, listen string, bank int, snap *telemetry.Sna
 	slog.Info("listening for incoming gateway", "source", "ydwg", "addr", listen)
 
 	go func() { <-ctx.Done(); ln.Close() }()
+	go addressClaimLoop(ctx)
 
 	var (
 		curConn net.Conn
