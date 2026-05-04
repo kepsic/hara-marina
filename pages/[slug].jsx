@@ -1050,24 +1050,34 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
           {/* Manual relay toggles */}
           <div style={{marginBottom:16}}>
             <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:8}}>Manual Control · Bank 1</div>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"flex-start"}}>
               {[1,2,3,4].map((n) => {
                 const key = `relay${n}`;
                 const known = relays[key] === true || relays[key] === false;
                 const on = relays[key] === true;
+                const label = boat?.relay_labels?.[String(n)];
                 return (
-                  <button key={n} disabled={relayBusy === n} onClick={() => setRelay(n, !on)}
-                    style={{
-                      padding:"10px 16px",cursor:"pointer",borderRadius:6,border:"1px solid rgba(126,171,200,0.3)",
-                      background:on?"rgba(42,154,74,0.35)":(known?"rgba(255,255,255,0.06)":"rgba(120,120,120,0.12)"),
-                      color:on?"#9eddb0":(known?"#9ec8e0":"#7f95a5"),fontSize:13,letterSpacing:1,
-                      boxShadow: on ? "0 0 8px rgba(42,154,74,0.3)" : "none",
-                    }}>
-                    R{n} {relayBusy === n ? "…" : (known ? (on ? "● ON" : "○ OFF") : "◌ N/A")}
-                  </button>
+                  <div key={n} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,minWidth:90}}>
+                    <button disabled={relayBusy === n} onClick={() => setRelay(n, !on)}
+                      style={{
+                        padding:"10px 16px",cursor:"pointer",borderRadius:6,border:"1px solid rgba(126,171,200,0.3)",
+                        background:on?"rgba(42,154,74,0.35)":(known?"rgba(255,255,255,0.06)":"rgba(120,120,120,0.12)"),
+                        color:on?"#9eddb0":(known?"#9ec8e0":"#7f95a5"),fontSize:13,letterSpacing:1,
+                        boxShadow: on ? "0 0 8px rgba(42,154,74,0.3)" : "none",
+                        width:"100%",
+                      }}>
+                      R{n} {relayBusy === n ? "…" : (known ? (on ? "● ON" : "○ OFF") : "◌ N/A")}
+                    </button>
+                    {label && (
+                      <div style={{fontSize:10,color:"#7eabc8",letterSpacing:0.5,textAlign:"center",maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}
+                           title={label}>
+                        {label}
+                      </div>
+                    )}
+                  </div>
                 );
               })}
-              {relayMsg && <span style={{fontSize:11,color:"#9eddb0",marginLeft:6}}>{relayMsg}</span>}
+              {relayMsg && <span style={{fontSize:11,color:"#9eddb0",marginLeft:6,alignSelf:"center"}}>{relayMsg}</span>}
             </div>
           </div>
 
@@ -1112,7 +1122,7 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
                 <div style={{flex:"1 1 200px"}}>
                   <div style={{fontSize:12,fontWeight:"bold",color:"#e8f4f8"}}>{s.name}</div>
                   <div style={{fontSize:10,color:"#7eabc8",marginTop:3,fontFamily:"monospace"}}>
-                    IF {s.field} {s.condition} {s.threshold} (±{s.hysteresis}) → R{s.relay} {s.action ? "ON" : "OFF"}
+                    IF {s.field} {s.condition} {s.threshold} (±{s.hysteresis}) → R{s.relay}{boat?.relay_labels?.[String(s.relay)] ? ` (${boat.relay_labels[String(s.relay)]})` : ""} {s.action ? "ON" : "OFF"}
                   </div>
                 </div>
                 <div style={{display:"flex",gap:8,alignItems:"center"}}>
@@ -1140,6 +1150,7 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
               <ScenarioEditor
                 value={editingScenario}
                 onChange={setEditingScenario}
+                relayLabels={boat?.relay_labels || {}}
                 onSave={(s) => {
                   let upd;
                   if (s._editIdx !== undefined) {
@@ -1190,6 +1201,7 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
                 color: s.color || prev.color,
                 notes: s.notes ?? prev.notes,
                 no_battery: typeof s.no_battery === "boolean" ? s.no_battery : prev.no_battery,
+                relay_labels: s.relay_labels && typeof s.relay_labels === "object" ? s.relay_labels : (prev.relay_labels || {}),
               }));
             }}
           />
@@ -1212,7 +1224,7 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
   );
 }
 
-function ScenarioEditor({ value, onChange, onSave, onCancel, busy }) {
+function ScenarioEditor({ value, onChange, onSave, onCancel, busy, relayLabels = {} }) {
   const FIELDS = [
     { value:"cabin.humidity_pct", label:"Cabin humidity (%)" },
     { value:"cabin.temperature_c", label:"Cabin temperature (°C)" },
@@ -1274,9 +1286,12 @@ function ScenarioEditor({ value, onChange, onSave, onCancel, busy }) {
       <div style={row}>
         <label style={{fontSize:11,color:"#7eabc8",minWidth:60}}>Then</label>
         <label style={{fontSize:11,color:"#9ec8e0"}}>Relay</label>
-        <select value={value.relay} onChange={(e)=>set("relay",Number(e.target.value))} style={{...sel,width:60}}>
-          <option value={1}>R1</option><option value={2}>R2</option>
-          <option value={3}>R3</option><option value={4}>R4</option>
+        <select value={value.relay} onChange={(e)=>set("relay",Number(e.target.value))} style={{...sel,width:160}}>
+          {[1,2,3,4].map((n) => (
+            <option key={n} value={n}>
+              R{n}{relayLabels[String(n)] ? ` · ${relayLabels[String(n)]}` : ""}
+            </option>
+          ))}
         </select>
         <select value={String(value.action)} onChange={(e)=>set("action",e.target.value==="true")} style={{...sel,width:80}}>
           <option value="true">turn ON</option>

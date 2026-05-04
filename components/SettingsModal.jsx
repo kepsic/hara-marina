@@ -77,6 +77,7 @@ export default function SettingsModal({
       <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
         {[
           { k: "identity", label: "Identity" },
+          { k: "relays",   label: "Relays" },
           { k: "alarms",   label: "Alarms" },
           { k: "access",   label: "Access PIN" },
         ].map((t) => (
@@ -118,6 +119,11 @@ export default function SettingsModal({
             </label>
           </Field>
         </div>
+      )}
+
+      {tab === "relays" && (
+        <RelaysTab labels={s.relay_labels || {}}
+                   onChange={(next) => update("relay_labels", next)} />
       )}
 
       {tab === "alarms" && (
@@ -201,6 +207,31 @@ function TabBtn({ active, children, onClick }) {
       borderRadius: 6, padding: "6px 12px", fontSize: 11, letterSpacing: 1,
       textTransform: "uppercase", cursor: "pointer", fontFamily: "inherit",
     }}>{children}</button>
+  );
+}
+
+function RelaysTab({ labels, onChange }) {
+  const set = (n, v) => {
+    const next = { ...labels };
+    const trimmed = v.slice(0, 40);
+    if (trimmed.trim()) next[String(n)] = trimmed;
+    else delete next[String(n)];
+    onChange(next);
+  };
+  return (
+    <div>
+      <div style={{ fontSize: 11, color: "#7eabc8", marginBottom: 14, lineHeight: 1.5 }}>
+        Friendly names for each relay channel. These appear under the manual toggle buttons
+        and in scenario dropdowns. Leave blank to keep the default <code style={{color:"#9ec8e0"}}>R1…R4</code>.
+      </div>
+      {[1,2,3,4].map((n) => (
+        <Field key={n} label={`Relay ${n}`}>
+          <input style={FIELD_STYLE} value={labels[String(n)] || ""}
+                 placeholder={`e.g. ${["Heater","Cabin lights","Fridge","Bilge pump"][n-1]}`}
+                 onChange={(e) => set(n, e.target.value)} />
+        </Field>
+      ))}
+    </div>
   );
 }
 
