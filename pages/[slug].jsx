@@ -1411,12 +1411,16 @@ function BoatWindSection({ tel, ais, weather }) {
             {sourceLabel}
           </div>
         </div>
-        {(isNum(heading) || isNum(cog)) && (
+        {(isNum(heading) || isNum(cog) || hasBoatWind) && (
           <div style={{
             background:"linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
             border:"1px solid rgba(126,171,200,0.18)",borderRadius:8,padding:"14px",
+            display:"flex", flexDirection:"column", alignItems:"center", gap:6,
           }}>
             <HeadingClock headingDeg={heading} cogDeg={cog} size={220} />
+            <div style={{fontSize:9,letterSpacing:1,color:"#5a8aaa",marginTop:4,textAlign:"center"}}>
+              Boat heading {isNum(cog) ? "· COG (dashed)" : ""}
+            </div>
           </div>
         )}
         <div style={{flex:"1 1 240px",display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))",gap:12,alignContent:"flex-start"}}>
