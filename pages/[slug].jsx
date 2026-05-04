@@ -72,7 +72,7 @@ export async function getServerSideProps({ req, params, query }) {
 }
 
 function Stat({ label, value, unit, color = "#e8f4f8", big }) {
-  const isBlank = value === null || value === undefined || value === "";
+  if (value === null || value === undefined || value === "") return null;
   return (
     <div style={{
       background:"linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
@@ -81,8 +81,8 @@ function Stat({ label, value, unit, color = "#e8f4f8", big }) {
     }}>
       <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:4}}>{label}</div>
       <div style={{fontSize:big?26:18,fontWeight:"bold",color,fontFamily:"Georgia, serif"}}>
-        {isBlank ? <em style={{color:"#3a5a6a"}}>—</em> : value}
-        {!isBlank && unit && <span style={{fontSize:11,color:"#5a8aaa",marginLeft:4,fontWeight:"normal"}}>{unit}</span>}
+        {value}
+        {unit && <span style={{fontSize:11,color:"#5a8aaa",marginLeft:4,fontWeight:"normal"}}>{unit}</span>}
       </div>
     </div>
   );
