@@ -192,7 +192,17 @@ func WriteRelay(ctx context.Context, cfg config.YdwgConfig, relayIndex int, on b
 
 	payload := []byte{byte(bank), stateByte, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 	canID := canIDForPGN(127502, ourSrcAddr, 3)
-	slog.Debug("relay write attempt", "source", "ydwg", "pgn", 127502, "relay", relayIndex, "state", on, "bank", bank, "src", ourSrcAddr, "tx_conn", getTxConn() != nil)
+	slog.Debug("relay write attempt",
+		"source", "ydwg",
+		"pgn", 127502,
+		"relay", relayIndex,
+		"state", on,
+		"bank", bank,
+		"src", ourSrcAddr,
+		"canid", fmt.Sprintf("%08X", canID),
+		"payload", fmt.Sprintf("% X", payload),
+		"tx_conn", getTxConn() != nil,
+	)
 	// Re-announce ourselves immediately before each command. Some N2K
 	// devices (including the YDCC-04) silently drop commands from a
 	// source address whose claim they have not seen recently.
@@ -567,7 +577,11 @@ func handleBinarySwitchBankStatus(d []byte, bank int, snap *telemetry.Snapshot) 
 	if len(d) < 2 {
 		return
 	}
-	if int(d[0]) != bank {
+	srcBank := int(d[0])
+	// Always log so it's visible whether the YDCC-04 reports the bank we
+	// expect, and whether its state actually changes after we send 127502.
+	slog.Debug("binary switch bank status", "source", "ydwg", "pgn", 127501, "bank", srcBank, "configured_bank", bank, "raw", fmt.Sprintf("% X", d))
+	if srcBank != bank {
 		return
 	}
 	// Packed 2-bit channel states starting at d[1].
