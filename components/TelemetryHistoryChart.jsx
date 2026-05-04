@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import BoatWindRose from "./BoatWindRose";
 
 /**
  * Interactive telemetry history charts with range + metric-group filters.
@@ -316,6 +317,104 @@ function Chip({ active, children, onClick }) {
   );
 }
 
+function avgAngleDeg(degs) {
+  if (!degs.length) return null;
+  let sx = 0, sy = 0;
+  for (const d of degs) {
+    const r = (d * Math.PI) / 180;
+    sx += Math.cos(r); sy += Math.sin(r);
+  }
+  const a = (Math.atan2(sy, sx) * 180) / Math.PI;
+  return ((a % 360) + 360) % 360;
+}
+
+function WindHistoryRose({ rows, loading, err, rangeLabel }) {
+  const { latest, agg } = useMemo(() => {
+    if (!rows.length) return { latest: null, agg: null };
+    // Find the most-recent row that has any wind field, plus aggregates over window.
+    let latest = null;
+    const trueDirs = []; const trueSpeeds = []; const appAngs = []; const appSpeeds = [];
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const r = rows[i];
+      if (
+        latest === null &&
+        (isNum(r.wind_true_dir_deg) || isNum(r.wind_true_speed_kn) || isNum(r.wind_app_angle_deg) || isNum(r.wind_app_speed_kn) || isNum(r.heading_deg) || isNum(r.cog_deg))
+      ) latest = r;
+    }
+    for (const r of rows) {
+      if (isNum(r.wind_true_dir_deg))    trueDirs.push(r.wind_true_dir_deg);
+      if (isNum(r.wind_true_speed_kn))   trueSpeeds.push(r.wind_true_speed_kn);
+      if (isNum(r.wind_app_angle_deg))   appAngs.push(r.wind_app_angle_deg);
+      if (isNum(r.wind_app_speed_kn))    appSpeeds.push(r.wind_app_speed_kn);
+    }
+    const avg = (xs) => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
+    const agg = {
+      avgTrueDir:   avgAngleDeg(trueDirs),
+      avgTrueSpeed: avg(trueSpeeds),
+      maxTrueSpeed: trueSpeeds.length ? Math.max(...trueSpeeds) : null,
+      avgAppAngle:  appAngs.length ? avg(appAngs) : null,
+      avgAppSpeed:  avg(appSpeeds),
+      maxAppSpeed:  appSpeeds.length ? Math.max(...appSpeeds) : null,
+      samples:      Math.max(trueDirs.length, trueSpeeds.length, appAngs.length, appSpeeds.length),
+    };
+    return { latest, agg };
+  }, [rows]);
+
+  if (loading) return <div style={{ fontSize: 12, color: "#5a8aaa", padding: "24px 12px", textAlign: "center" }}>loading…</div>;
+  if (err)     return <div style={{ fontSize: 12, color: "#e08040", padding: "24px 12px", textAlign: "center" }}>error: {err}</div>;
+  if (!latest) {
+    return (
+      <div style={{
+        fontSize: 12, color: "#5a8aaa", padding: "24px 12px",
+        border: "1px dashed rgba(126,171,200,0.18)", borderRadius: 8, textAlign: "center",
+      }}>
+        no <b style={{ color: "#9ec8e0" }}>wind</b> data in the last {rangeLabel} — try another range
+      </div>
+    );
+  }
+
+  const stat = (label, val, unit) => (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
+      <div style={{ fontSize: 9, letterSpacing: 2, color: "#7eabc8", textTransform: "uppercase" }}>{label}</div>
+      <div style={{ fontFamily: "monospace", fontSize: 14, color: "#e8f4f8" }}>
+        {val == null ? "—" : `${val}${unit ? " " + unit : ""}`}
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{
+      display: "grid", gridTemplateColumns: "auto 1fr", gap: 18, alignItems: "center",
+      background: "linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
+      border: "1px solid rgba(126,171,200,0.18)",
+      borderRadius: 8, padding: "14px 18px",
+    }}>
+      <BoatWindRose
+        size={240}
+        trueDirDeg={isNum(latest.wind_true_dir_deg) ? latest.wind_true_dir_deg : null}
+        trueSpeedKn={isNum(latest.wind_true_speed_kn) ? latest.wind_true_speed_kn : null}
+        apparentAngle={isNum(latest.wind_app_angle_deg) ? latest.wind_app_angle_deg : null}
+        apparentSpeedKn={isNum(latest.wind_app_speed_kn) ? latest.wind_app_speed_kn : null}
+        headingDeg={isNum(latest.heading_deg) ? latest.heading_deg : null}
+        cogDeg={isNum(latest.cog_deg) ? latest.cog_deg : null}
+      />
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+        gap: 14,
+      }}>
+        {stat("Last sample", new Date(latest.ts).toLocaleString())}
+        {stat("Avg true dir", agg.avgTrueDir != null ? `${Math.round(agg.avgTrueDir)}°` : null)}
+        {stat("Avg true speed", agg.avgTrueSpeed != null ? agg.avgTrueSpeed.toFixed(1) : null, "kn")}
+        {stat("Max true gust", agg.maxTrueSpeed != null ? agg.maxTrueSpeed.toFixed(1) : null, "kn")}
+        {stat("Avg app speed", agg.avgAppSpeed != null ? agg.avgAppSpeed.toFixed(1) : null, "kn")}
+        {stat("Max app gust", agg.maxAppSpeed != null ? agg.maxAppSpeed.toFixed(1) : null, "kn")}
+        {stat("Samples", agg.samples)}
+      </div>
+    </div>
+  );
+}
+
 export default function TelemetryHistoryChart({ slug, defaultRange = "24h", defaultGroup = "power" }) {
   const [rangeKey, setRangeKey] = useState(defaultRange);
   const [groupKey, setGroupKey] = useState(defaultGroup);
@@ -409,7 +508,7 @@ export default function TelemetryHistoryChart({ slug, defaultRange = "24h", defa
         </span>
       </div>
 
-      {!loading && !err && present.length === 0 && (
+      {!loading && !err && present.length === 0 && groupKey !== "wind" && (
         <div style={{
           fontSize: 12, color: "#5a8aaa", padding: "24px 12px",
           border: "1px dashed rgba(126,171,200,0.18)", borderRadius: 8, textAlign: "center",
@@ -418,15 +517,19 @@ export default function TelemetryHistoryChart({ slug, defaultRange = "24h", defa
         </div>
       )}
 
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-        gap: 12,
-      }}>
-        {present.map((m) => (
-          <Chart key={m.key} rows={rows} metric={m} hoverTs={hoverTs} setHoverTs={setHoverTs} />
-        ))}
-      </div>
+      {groupKey === "wind" ? (
+        <WindHistoryRose rows={rows} loading={loading} err={err} rangeLabel={range.label} />
+      ) : (
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+          gap: 12,
+        }}>
+          {present.map((m) => (
+            <Chart key={m.key} rows={rows} metric={m} hoverTs={hoverTs} setHoverTs={setHoverTs} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
