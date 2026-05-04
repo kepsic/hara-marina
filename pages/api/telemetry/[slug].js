@@ -51,6 +51,13 @@ export default async function handler(req, res) {
         : live.relays;
 
       const last_seen_ago = Math.max(0, Math.floor((Date.now() - (live.ts || Date.now())) / 1000));
+      // Reject stale cached data — Redis TTL is 7 days but stale emulator/bridge
+      // data should never be shown as current. Require data fresher than 1 hour.
+      const STALE_THRESHOLD_SECONDS = 3600;
+      if (last_seen_ago > STALE_THRESHOLD_SECONDS) {
+        res.setHeader("Cache-Control", "private, no-store");
+        return res.status(404).json({ error: "no recent telemetry", last_seen_ago });
+      }
       // Compute dew point from Magnus formula if sensor doesn't provide it
       let dewpoint_c = live.dewpoint_c;
       if (dewpoint_c == null) {
