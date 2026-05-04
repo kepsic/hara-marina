@@ -39,30 +39,49 @@ function clean(payload) {
   const out = { slug: norm(payload.slug) };
   if (num(payload.ts) !== undefined) out.ts = num(payload.ts);
   if (payload.battery) {
-    out.battery = {
-      voltage: num(payload.battery.voltage) ?? 0,
-      percent: num(payload.battery.percent) ?? 0,
-    };
+    const b = {};
+    if (num(payload.battery.voltage) !== undefined) b.voltage = num(payload.battery.voltage);
+    if (num(payload.battery.percent) !== undefined) b.percent = num(payload.battery.percent);
+    if (Object.keys(b).length) out.battery = b;
   }
   if (payload.bilge) {
-    out.bilge = {
-      water_cm: num(payload.bilge.water_cm) ?? 0,
-      pump_cycles_24h: num(payload.bilge.pump_cycles_24h) ?? 0,
-    };
+    const b = {};
+    if (num(payload.bilge.water_cm) !== undefined) b.water_cm = num(payload.bilge.water_cm);
+    if (num(payload.bilge.pump_cycles_24h) !== undefined) b.pump_cycles_24h = num(payload.bilge.pump_cycles_24h);
+    if (Object.keys(b).length) out.bilge = b;
   }
   if (payload.cabin) {
-    out.cabin = {
-      temperature_c: num(payload.cabin.temperature_c) ?? 0,
-      humidity_pct: num(payload.cabin.humidity_pct) ?? 0,
-    };
+    const c = {};
+    if (num(payload.cabin.temperature_c) !== undefined) c.temperature_c = num(payload.cabin.temperature_c);
+    if (num(payload.cabin.humidity_pct) !== undefined) c.humidity_pct = num(payload.cabin.humidity_pct);
+    if (Object.keys(c).length) out.cabin = c;
   }
   if (payload.position) {
-    out.position = {
-      lat: num(payload.position.lat) ?? 0,
-      lon: num(payload.position.lon) ?? 0,
-    };
+    const p = {};
+    if (num(payload.position.lat) !== undefined) p.lat = num(payload.position.lat);
+    if (num(payload.position.lon) !== undefined) p.lon = num(payload.position.lon);
+    if (Object.keys(p).length) out.position = p;
   }
   if (payload.shore_power !== undefined) out.shore_power = !!payload.shore_power;
+  if (payload.ac && typeof payload.ac === "object") {
+    const ac = {};
+    if (num(payload.ac.voltage_v) !== undefined) ac.voltage_v = num(payload.ac.voltage_v);
+    if (num(payload.ac.current_a) !== undefined) ac.current_a = num(payload.ac.current_a);
+    if (num(payload.ac.power_w) !== undefined) ac.power_w = num(payload.ac.power_w);
+    if (num(payload.ac.energy_kwh_total) !== undefined) ac.energy_kwh_total = num(payload.ac.energy_kwh_total);
+    if (Object.keys(ac).length) out.ac = ac;
+  }
+  if (payload.relays && typeof payload.relays === "object") {
+    const relays = {};
+    if (payload.relays.bank1 && typeof payload.relays.bank1 === "object") {
+      const b1 = {};
+      for (const k of ["relay1", "relay2", "relay3", "relay4"]) {
+        if (payload.relays.bank1[k] !== undefined) b1[k] = !!payload.relays.bank1[k];
+      }
+      if (Object.keys(b1).length) relays.bank1 = b1;
+    }
+    if (Object.keys(relays).length) out.relays = relays;
+  }
   const passthrough = [
     "heel_deg",
     "pitch_deg",
