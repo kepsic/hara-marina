@@ -834,9 +834,9 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
               {isNum(weather.winddirection) && (
                 <div style={{
                   display:"flex", flexDirection:"column", alignItems:"center", gap:6,
-                  flex:"1 1 200px", maxWidth:220, minWidth:0,
+                  flex:"1 1 240px", maxWidth:268, minWidth:0,
                 }}>
-                  <WindDirCompass dirDeg={weather.winddirection} size={200} label="Wind direction" />
+                  <WindDirCompass dirDeg={weather.winddirection} size={240} label="Wind direction" />
                 </div>
               )}
               <div style={{
