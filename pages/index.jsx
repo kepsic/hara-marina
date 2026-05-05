@@ -145,13 +145,27 @@ export default function HaraMarina() {
   }, []);
 
   useEffect(() => {
+    if (authed === false) {
+      // Anonymous visitors land on the public marina map (the slug-list "Marina"
+      // view is for boat owners / staff only).
+      setView((cur) => (cur === "marina" ? "map" : cur));
+    }
+  }, [authed]);
+
+  useEffect(() => {
     if (!savedView) return;
     if (savedView === "crane") {
       if (authed === true) setView("crane");
-      else if (authed === false) setView("marina");
+      else if (authed === false) setView("map");
       return;
     }
-    if (savedView === "marina" || savedView === "map") setView(savedView);
+    if (savedView === "marina") {
+      // Don't restore the private boat list for anonymous visitors.
+      if (authed === false) setView("map");
+      else if (authed === true) setView("marina");
+      return;
+    }
+    if (savedView === "map") setView("map");
   }, [savedView, authed]);
 
   useEffect(() => {
@@ -1121,7 +1135,7 @@ export default function HaraMarina() {
           {/* Tabs */}
           <div style={{display:"flex",gap:4,background:"rgba(0,0,0,0.3)",borderRadius:6,padding:3}}>
             {[
-              {id:"marina",label:"⚓ Marina"},
+              ...(authed ? [{id:"marina",label:"⚓ Marina"}] : []),
               {id:"map",label:"🗺 Map"},
               ...(authed ? [{id:"crane",label:"🏗 Crane"}] : []),
             ].map(tab=>(
