@@ -48,10 +48,16 @@ export default async function handler(req, res) {
 
     // Fire side-effects only on actual status transitions to avoid spamming.
     if (updated && previous.status !== updated.status) {
-      if (updated.status === "confirmed") {
-        sendBookingConfirmed(updated).catch((err) => console.error("[bookings] confirm email failed:", err));
-      } else if (updated.status === "cancelled") {
-        sendBookingCancelled(updated).catch((err) => console.error("[bookings] cancel email failed:", err));
+      try {
+        if (updated.status === "confirmed") {
+          const r = await sendBookingConfirmed(updated);
+          console.log("[bookings] sendBookingConfirmed", id, r);
+        } else if (updated.status === "cancelled") {
+          const r = await sendBookingCancelled(updated);
+          console.log("[bookings] sendBookingCancelled", id, r);
+        }
+      } catch (err) {
+        console.error("[bookings] status-change email failed:", err);
       }
     }
     return res.status(200).json({ booking: updated });

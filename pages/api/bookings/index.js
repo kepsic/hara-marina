@@ -27,11 +27,15 @@ export default async function handler(req, res) {
     const body = req.body && typeof req.body === "object" ? req.body : {};
     try {
       const booking = await createBooking(body);
-      // Fire-and-don't-block so a transient email outage never blocks the booking
-      // from landing in the harbor master's queue.
-      sendBookingReceived(booking).catch((err) => {
+      // Await the email so the Vercel lambda doesn't freeze before Resend
+      // returns. We swallow errors so a transient mail outage never blocks the
+      // booking from landing in the harbor master's queue.
+      try {
+        const result = await sendBookingReceived(booking);
+        console.log("[bookings] sendBookingReceived", booking.id, result);
+      } catch (err) {
         console.error("[bookings] sendBookingReceived failed:", err);
-      });
+      }
       return res.status(201).json({ booking });
     } catch (err) {
       const code = err?.code === "UNAVAILABLE" ? 409
