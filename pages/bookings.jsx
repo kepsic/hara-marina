@@ -201,12 +201,12 @@ export default function BookingsAdminPage() {
         </div>
       )}
 
-      {showSettings && <PricingSettingsModal onClose={() => setShowSettings(false)} />}
+      {showSettings && <PricingSettingsModal isSuperAdmin={!!me?.is_super_admin} onClose={() => setShowSettings(false)} />}
     </div>
   );
 }
 
-function PricingSettingsModal({ onClose }) {
+function PricingSettingsModal({ onClose, isSuperAdmin }) {
   const [cfg, setCfg] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
@@ -290,19 +290,21 @@ function PricingSettingsModal({ onClose }) {
             </div>
 
             <fieldset style={{ border: "1px solid #1c3346", borderRadius: 6, padding: 12 }}>
-              <legend style={{ fontSize: 12, color: "#7eabc8", padding: "0 6px" }}>SaaS platform fee (deducted from each booking)</legend>
+              <legend style={{ fontSize: 12, color: "#7eabc8", padding: "0 6px" }}>SaaS platform fee {isSuperAdmin ? "" : "(read-only)"}</legend>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <label style={lbl}>
                   Percent
-                  <input type="number" step="0.1" style={inp} value={cfg.platformFeePercent} onChange={(e) => update({ platformFeePercent: Number(e.target.value) })} />
+                  <input type="number" step="0.1" disabled={!isSuperAdmin} style={{ ...inp, opacity: isSuperAdmin ? 1 : 0.6 }} value={cfg.platformFeePercent} onChange={(e) => update({ platformFeePercent: Number(e.target.value) })} />
                 </label>
                 <label style={lbl}>
                   Fixed (cents)
-                  <input type="number" style={inp} value={cfg.platformFeeFixedCents} onChange={(e) => update({ platformFeeFixedCents: Number(e.target.value) })} />
+                  <input type="number" disabled={!isSuperAdmin} style={{ ...inp, opacity: isSuperAdmin ? 1 : 0.6 }} value={cfg.platformFeeFixedCents} onChange={(e) => update({ platformFeeFixedCents: Number(e.target.value) })} />
                 </label>
               </div>
               <div style={{ fontSize: 11, color: "#5a7e96", marginTop: 6 }}>
-                Example €100 booking → platform fee: {((100 * cfg.platformFeePercent / 100) + cfg.platformFeeFixedCents / 100).toFixed(2)} {cfg.currency}, marina receives {(100 - (100 * cfg.platformFeePercent / 100) - cfg.platformFeeFixedCents / 100).toFixed(2)} {cfg.currency}.
+                {isSuperAdmin
+                  ? `Example €100 booking → platform fee: ${((100 * cfg.platformFeePercent / 100) + cfg.platformFeeFixedCents / 100).toFixed(2)} ${cfg.currency}, marina receives ${(100 - (100 * cfg.platformFeePercent / 100) - cfg.platformFeeFixedCents / 100).toFixed(2)} ${cfg.currency}.`
+                  : `Set by the platform owner. On a €100 booking your marina receives ${(100 - (100 * cfg.platformFeePercent / 100) - cfg.platformFeeFixedCents / 100).toFixed(2)} ${cfg.currency} (platform takes ${((100 * cfg.platformFeePercent / 100) + cfg.platformFeeFixedCents / 100).toFixed(2)} ${cfg.currency} to cover Stripe + infra).`}
               </div>
             </fieldset>
 

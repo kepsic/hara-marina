@@ -1,5 +1,5 @@
 import { verifySession, SESSION_COOKIE_NAME } from "../../../lib/auth";
-import { isHarborMaster } from "../../../lib/owners";
+import { isHarborMaster, isSuperAdmin } from "../../../lib/owners";
 import { getPricingConfig, setPricingConfig } from "../../../lib/pricing";
 
 export default async function handler(req, res) {
@@ -20,9 +20,12 @@ export default async function handler(req, res) {
     if (!session?.email || !isHarborMaster(session.email)) {
       return res.status(403).json({ error: "harbor master role required" });
     }
+    const superAdmin = isSuperAdmin(session.email);
     const body = req.body && typeof req.body === "object" ? req.body : {};
 
     // Sanitise — store only known fields, coerce numerics, clamp ranges.
+    // Platform fee is SaaS-owner revenue; harbor masters can't change it,
+    // so we silently keep the existing values for non-superadmins.
     const current = await getPricingConfig();
     const next = {
       currency: typeof body.currency === "string" && body.currency.length === 3
@@ -32,8 +35,12 @@ export default async function handler(req, res) {
       perDockOverrides: sanitiseOverrides(body.perDockOverrides, current.perDockOverrides),
       perBerthOverrides: sanitiseOverrides(body.perBerthOverrides, current.perBerthOverrides),
       seasonal: sanitiseSeasonal(body.seasonal, current.seasonal),
-      platformFeePercent: clampNum(body.platformFeePercent, 0, 100, current.platformFeePercent),
-      platformFeeFixedCents: clampInt(body.platformFeeFixedCents, 0, 100_000, current.platformFeeFixedCents),
+      platformFeePercent: superAdmin
+        ? clampNum(body.platformFeePercent, 0, 100, current.platformFeePercent)
+        : current.platformFeePercent,
+      platformFeeFixedCents: superAdmin
+        ? clampInt(body.platformFeeFixedCents, 0, 100_000, current.platformFeeFixedCents)
+        : current.platformFeeFixedCents,
     };
     await setPricingConfig(next);
     return res.status(200).json({ pricing: next });
