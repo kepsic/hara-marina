@@ -32,12 +32,26 @@ export default async function handler(req, res) {
   // } catch (err) {
   //   return res.status(400).send(`Webhook Error: ${err.message}`);
   // }
+  // // Platform-level events
   // if (event.type === "payment_intent.succeeded") {
   //   const intent = event.data.object;
   //   const bookingId = intent.metadata?.bookingId;
   //   if (bookingId) {
   //     await updateBooking(bookingId, { paymentStatus: "paid", status: "confirmed" });
   //   }
+  // }
+  // if (event.type === "charge.refunded") {
+  //   const ch = event.data.object;
+  //   const bookingId = ch.metadata?.bookingId;
+  //   if (bookingId) await updateBooking(bookingId, { paymentStatus: "refunded" });
+  // }
+  //
+  // // Connect-account events (configure a SECOND webhook endpoint of type
+  // // "Connect" in the Stripe dashboard pointing at this same URL — Stripe will
+  // // include `account` on the event so you can correlate it back to a marina):
+  // if (event.type === "account.updated") {
+  //   const acct = event.data.object;   // acct.id, acct.charges_enabled, acct.payouts_enabled
+  //   // optional: refresh your hara:stripe-connect:v1 cache or notify the marina
   // }
 
   console.log("[stripe-webhook] stub received an event (not enabled)");
