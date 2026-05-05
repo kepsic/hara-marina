@@ -43,6 +43,8 @@ const DEFAULT_LAYOUT = {
   },
   fuelDock: [59.5884654, 25.6129156],
   reverseBoatOrder: false,
+  dockHeadingDeg: { A: 270, B: 270, C: 270 },
+  boatHeadingOverrides: {},
 };
 
 function isLatLon(pt) {
@@ -71,6 +73,27 @@ function cleanBerths(raw, fallback) {
   return out;
 }
 
+function cleanDockHeadings(raw) {
+  const out = { ...DEFAULT_LAYOUT.dockHeadingDeg };
+  for (const dockId of ["A", "B", "C"]) {
+    const value = Number(raw?.[dockId]);
+    if (Number.isFinite(value)) out[dockId] = (((value % 360) + 360) % 360);
+  }
+  return out;
+}
+
+function cleanBoatHeadingOverrides(raw) {
+  const out = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const [key, value] of Object.entries(raw)) {
+    const numKey = Number(key);
+    const deg = Number(value);
+    if (!Number.isFinite(numKey) || !Number.isFinite(deg)) continue;
+    out[String(numKey)] = (((deg % 360) + 360) % 360);
+  }
+  return out;
+}
+
 function sanitizeLayout(raw) {
   const src = raw && typeof raw === "object" ? raw : {};
 
@@ -83,6 +106,8 @@ function sanitizeLayout(raw) {
   const berthPositions = cleanBerths(src.berthPositions, DEFAULT_LAYOUT.berthPositions);
   const fuelDock = isLatLon(src.fuelDock) ? clampPt(src.fuelDock) : DEFAULT_LAYOUT.fuelDock;
   const reverseBoatOrder = !!src.reverseBoatOrder;
+  const dockHeadingDeg = cleanDockHeadings(src.dockHeadingDeg);
+  const boatHeadingOverrides = cleanBoatHeadingOverrides(src.boatHeadingOverrides);
 
   if (pierLines.length === 0) {
     return DEFAULT_LAYOUT;
@@ -94,6 +119,8 @@ function sanitizeLayout(raw) {
     berthPositions,
     fuelDock,
     reverseBoatOrder,
+    dockHeadingDeg,
+    boatHeadingOverrides,
   };
 }
 

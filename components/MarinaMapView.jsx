@@ -42,6 +42,8 @@ const DEFAULT_LAYOUT = {
   },
   fuelDock: [59.5884654, 25.6129156],
   reverseBoatOrder: false,
+  dockHeadingDeg: { A: 270, B: 270, C: 270 },
+  boatHeadingOverrides: {},
 };
 
 function keyFor(boat) {
@@ -108,11 +110,46 @@ function orderedBerthSlots(layout) {
   return out;
 }
 
-function boatMarkerIcon(color, isSelected) {
+function boatHeadingDeg(layout, boat, sectionId) {
+  const override = layout?.boatHeadingOverrides?.[String(boat?.id || "")];
+  if (Number.isFinite(override)) return override;
+  const byDock = layout?.dockHeadingDeg?.[sectionId];
+  if (Number.isFinite(byDock)) return byDock;
+  return 270;
+}
+
+function updateHeading(layout, target, deltaDeg, boatId) {
+  const next = cloneLayout(layout);
+  next.dockHeadingDeg = { A: 270, B: 270, C: 270, ...(next.dockHeadingDeg || {}) };
+  next.boatHeadingOverrides = { ...(next.boatHeadingOverrides || {}) };
+
+  const add = (value) => {
+    const nextDeg = (((Number(value) || 0) + deltaDeg) % 360 + 360) % 360;
+    return nextDeg;
+  };
+
+  if (target === "dock-all") {
+    for (const dockId of ["A", "B", "C"]) next.dockHeadingDeg[dockId] = add(next.dockHeadingDeg[dockId]);
+  }
+  if (target === "dock-A") next.dockHeadingDeg.A = add(next.dockHeadingDeg.A);
+  if (target === "dock-B") next.dockHeadingDeg.B = add(next.dockHeadingDeg.B);
+  if (target === "dock-C") next.dockHeadingDeg.C = add(next.dockHeadingDeg.C);
+  if (target === "boat" && boatId != null) {
+    const key = String(boatId);
+    const base = Number.isFinite(next.boatHeadingOverrides[key])
+      ? next.boatHeadingOverrides[key]
+      : 270;
+    next.boatHeadingOverrides[key] = add(base);
+  }
+  return next;
+}
+
+function boatMarkerIcon(color, isSelected, headingDeg) {
   const stroke = isSelected ? "#f0c040" : "rgba(255,255,255,0.82)";
   const strokeWidth = isSelected ? 2.5 : 1.2;
   const width = 80;
   const height = 32;
+  const rotationDeg = (((Number(headingDeg) || 270) - 270) % 360 + 360) % 360;
   const shadow = isSelected
     ? "drop-shadow(0 0 7px rgba(240,192,64,0.75))"
     : "drop-shadow(0 1px 3px rgba(0,0,0,0.45))";
@@ -120,7 +157,7 @@ function boatMarkerIcon(color, isSelected) {
   return divIcon({
     className: "hara-boat-marker",
     html: `
-      <div style="width:${width}px;height:${height}px;display:flex;align-items:center;justify-content:center;pointer-events:none;">
+      <div style="width:${width}px;height:${height}px;display:flex;align-items:center;justify-content:center;pointer-events:none;transform:rotate(${rotationDeg}deg);transform-origin:50% 50%;">
         <svg width="${width}" height="${height}" viewBox="0 0 80 32" fill="none" xmlns="http://www.w3.org/2000/svg" style="overflow:visible;">
           <g transform="translate(80,0) scale(-1,1)">
             <path d="M6 16 C6 16 18 4 50 4 L74 10 L76 16 L74 22 L50 28 C18 28 6 16 6 16Z"
@@ -152,6 +189,9 @@ export default function MarinaMapView({
   const [target, setTarget] = useState("berths-all");
   const [stepDeg, setStepDeg] = useState(0.00005);
   const [rotDeg, setRotDeg] = useState(2);
+  const [headingTarget, setHeadingTarget] = useState("dock-all");
+  const [headingStepDeg, setHeadingStepDeg] = useState(5);
+  const [headingBoatId, setHeadingBoatId] = useState(null);
   const [draft, setDraft] = useState(layout || DEFAULT_LAYOUT);
   const [saving, setSaving] = useState(false);
   const [windOpen, setWindOpen] = useState(true);
@@ -159,6 +199,11 @@ export default function MarinaMapView({
   useEffect(() => {
     setDraft(layout || DEFAULT_LAYOUT);
   }, [layout]);
+
+  useEffect(() => {
+    if (headingBoatId != null) return;
+    if (boats[0]?.id != null) setHeadingBoatId(boats[0].id);
+  }, [boats, headingBoatId]);
 
   const active = draft || DEFAULT_LAYOUT;
   const hasBoatWind = marinaConditions?.wind?.direction_deg != null && marinaConditions?.wind?.sample_count > 0;
@@ -199,7 +244,7 @@ export default function MarinaMapView({
             <Marker
               key={keyFor(boat)}
               position={slot.pos}
-              icon={boatMarkerIcon(boat.color, isSelected)}
+              icon={boatMarkerIcon(boat.color, isSelected, boatHeadingDeg(active, boat, slot.sectionId))}
               eventHandlers={{ click: () => onBoatSelect(boat.id) }}
             >
               <Tooltip direction="top" offset={[0, -6]}>
@@ -373,6 +418,55 @@ export default function MarinaMapView({
               >
                 {active.reverseBoatOrder ? "Reversed (shore-first flipped)" : "Normal"}
               </button>
+
+              <div style={{ fontSize: 10, marginBottom: 6 }}>Boat orientation</div>
+              <select
+                value={headingTarget}
+                onChange={(e) => setHeadingTarget(e.target.value)}
+                style={{ width: "100%", marginBottom: 8, background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
+              >
+                <option value="dock-all">All docks</option>
+                <option value="dock-A">Dock A</option>
+                <option value="dock-B">Dock B</option>
+                <option value="dock-C">Dock C</option>
+                <option value="boat">Individual boat</option>
+              </select>
+
+              {headingTarget === "boat" && (
+                <select
+                  value={headingBoatId ?? ""}
+                  onChange={(e) => setHeadingBoatId(Number(e.target.value))}
+                  style={{ width: "100%", marginBottom: 8, background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
+                >
+                  {boats.map((boat) => (
+                    <option key={boat.id} value={boat.id}>{boat.name}</option>
+                  ))}
+                </select>
+              )}
+
+              <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                <input
+                  type="number"
+                  step="1"
+                  min="1"
+                  max="90"
+                  value={headingStepDeg}
+                  onChange={(e) => setHeadingStepDeg(Math.max(1, Math.min(90, Number(e.target.value) || 5)))}
+                  style={{ flex: 1, background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
+                />
+                <button
+                  onClick={() => setDraft((l) => updateHeading(l, headingTarget, -headingStepDeg, headingBoatId))}
+                  style={{ cursor: "pointer" }}
+                >
+                  -deg
+                </button>
+                <button
+                  onClick={() => setDraft((l) => updateHeading(l, headingTarget, headingStepDeg, headingBoatId))}
+                  style={{ cursor: "pointer" }}
+                >
+                  +deg
+                </button>
+              </div>
 
               <div style={{ fontSize: 10, marginBottom: 6 }}>Berth row angle</div>
               <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
