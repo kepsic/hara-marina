@@ -98,6 +98,14 @@ function deriveStatus({ tel, ais, alerts, passage, nowTs }) {
   if (ais?.state === "anchored_nearby") return { tone: "ok", primary: "Anchored near marina", detail: ais.label || "" };
   if (ais?.state === "underway") return { tone: "watch", primary: "Underway", detail: ais.label || "" };
   if (ais?.state === "away") return { tone: "watch", primary: "Away from marina", detail: ais.label || "" };
+
+  // Fresh telemetry but no GPS classification (e.g. position not reported,
+  // AIS endpoint silent). The boat is online — that itself is the safety
+  // signal — so do not show a scary "Status unknown" red-ish banner.
+  if (ageMs !== null && ageMs <= 60 * 60 * 1000) {
+    return { tone: "ok", primary: "Online", detail: "telemetry live, no GPS fix" };
+  }
+
   return { tone: "unknown", primary: "Status unknown", detail: lastTs ? `last contact ${fmtRelMin(ageMs)}` : "no telemetry yet" };
 }
 
