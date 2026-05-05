@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { divIcon } from "leaflet";
-import { MapContainer, TileLayer, Marker, Tooltip } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Tooltip, useMapEvents } from "react-leaflet";
 import BoatWindRose from "./BoatWindRose";
 import WindCanvas from "./WindCanvas";
 
@@ -144,11 +144,17 @@ function updateHeading(layout, target, deltaDeg, boatId) {
   return next;
 }
 
-function boatMarkerIcon(color, isSelected, headingDeg) {
+function boatScaleForZoom(zoom) {
+  if (!Number.isFinite(zoom)) return 1;
+  return Math.max(0.45, Math.min(1, 0.45 + (zoom - 14) * 0.11));
+}
+
+function boatMarkerIcon(color, isSelected, headingDeg, zoom) {
   const stroke = isSelected ? "#f0c040" : "rgba(255,255,255,0.82)";
   const strokeWidth = isSelected ? 2.5 : 1.2;
-  const width = 80;
-  const height = 32;
+  const scale = boatScaleForZoom(zoom);
+  const width = Math.round(80 * scale);
+  const height = Math.round(32 * scale);
   const rotationDeg = (((Number(headingDeg) || 270) - 270) % 360 + 360) % 360;
   const shadow = isSelected
     ? "drop-shadow(0 0 7px rgba(240,192,64,0.75))"
@@ -174,6 +180,13 @@ function boatMarkerIcon(color, isSelected, headingDeg) {
   });
 }
 
+function MapZoomTracker({ onZoomChange }) {
+  useMapEvents({
+    zoomend: (event) => onZoomChange(event.target.getZoom()),
+  });
+  return null;
+}
+
 export default function MarinaMapView({
   boats,
   selectedId,
@@ -195,6 +208,7 @@ export default function MarinaMapView({
   const [draft, setDraft] = useState(layout || DEFAULT_LAYOUT);
   const [saving, setSaving] = useState(false);
   const [windOpen, setWindOpen] = useState(true);
+  const [zoom, setZoom] = useState(17);
 
   useEffect(() => {
     setDraft(layout || DEFAULT_LAYOUT);
@@ -230,6 +244,7 @@ export default function MarinaMapView({
         style={{ height: "100%", width: "100%", position: "relative", zIndex: 0 }}
         scrollWheelZoom
       >
+        <MapZoomTracker onZoomChange={setZoom} />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -244,7 +259,7 @@ export default function MarinaMapView({
             <Marker
               key={keyFor(boat)}
               position={slot.pos}
-              icon={boatMarkerIcon(boat.color, isSelected, boatHeadingDeg(active, boat, slot.sectionId))}
+              icon={boatMarkerIcon(boat.color, isSelected, boatHeadingDeg(active, boat, slot.sectionId), zoom)}
               eventHandlers={{ click: () => onBoatSelect(boat.id) }}
             >
               <Tooltip direction="top" offset={[0, -6]}>
