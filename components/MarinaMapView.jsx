@@ -176,6 +176,21 @@ function moveBoatOrder(layout, dragBoatId, targetBoatId) {
   return { ...layout, boatOrder: nextOrder, reverseBoatOrder: false };
 }
 
+function assignBoatToBerth(layout, boats, boatId, berthId) {
+  if (boatId == null) return layout;
+  const slots = orderedBerthSlots(layout);
+  const targetIdx = slots.findIndex((slot) => slot.berthId === berthId);
+  if (targetIdx < 0) return layout;
+  const ordered = orderedBoats(layout, boats);
+  const order = ordered.map((b) => b.id);
+  const from = order.indexOf(boatId);
+  if (from < 0) return layout;
+  const [item] = order.splice(from, 1);
+  const insertAt = Math.min(targetIdx, order.length);
+  order.splice(insertAt, 0, item);
+  return { ...layout, boatOrder: order, reverseBoatOrder: false };
+}
+
 function boatHeadingDeg(layout, boat, slot) {
   const override = layout?.boatHeadingOverrides?.[String(boat?.id || "")];
   if (Number.isFinite(override)) return override;
@@ -940,7 +955,7 @@ export default function MarinaMapView({
               {adminTab === "boats" && (
                 <>
                   <div style={{ fontSize: 10, color: "#7eabc8", marginBottom: 8 }}>
-                    Drag a row onto another row to swap boats between berths.
+                    Pick a berth from the dropdown to assign a boat directly, or drag a row onto another to swap.
                   </div>
                   <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
                     {assignedBoats.map((boat, idx) => {
@@ -957,10 +972,10 @@ export default function MarinaMapView({
                           onDragEnd={onOrderDragEnd}
                           style={{
                             display: "grid",
-                            gridTemplateColumns: "22px 1fr auto",
-                            gap: 8,
+                            gridTemplateColumns: "18px 1fr 12px",
+                            gap: 6,
                             alignItems: "center",
-                            padding: "7px 8px",
+                            padding: "6px 8px",
                             borderRadius: 6,
                             border: isOver ? "1px solid rgba(240,192,64,0.7)" : "1px solid rgba(126,171,200,0.2)",
                             background: isOver ? "rgba(240,192,64,0.12)" : "rgba(255,255,255,0.04)",
@@ -968,14 +983,47 @@ export default function MarinaMapView({
                             cursor: "grab",
                           }}
                         >
-                          <div style={{ color: "#7eabc8", fontSize: 15, lineHeight: 1, textAlign: "center" }}>⋮⋮</div>
-                          <div style={{ minWidth: 0 }}>
+                          <div style={{ color: "#7eabc8", fontSize: 14, lineHeight: 1, textAlign: "center" }}>⋮⋮</div>
+                          <div style={{ minWidth: 0, display: "grid", gap: 4 }}>
                             <div style={{ fontSize: 11, color: "#dcecf5", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                               {boat.name}
                             </div>
-                            <div style={{ fontSize: 9, color: "#7eabc8", letterSpacing: 0.8, textTransform: "uppercase" }}>
-                              {slot ? `Dock ${slot.dockName} · ${slot.label}` : "Unassigned"}
-                            </div>
+                            <select
+                              value={slot ? slot.berthId : ""}
+                              onChange={(e) => {
+                                const berthId = e.target.value;
+                                if (!berthId) return;
+                                setDraft((current) => assignBoatToBerth(current || active, boats, boat.id, berthId));
+                              }}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => e.stopPropagation()}
+                              draggable={false}
+                              onDragStart={(e) => e.preventDefault()}
+                              style={{
+                                background: "#102537",
+                                color: "#dcecf5",
+                                border: "1px solid #36566b",
+                                borderRadius: 4,
+                                fontSize: 10,
+                                padding: "3px 4px",
+                                cursor: "pointer",
+                              }}
+                            >
+                              {!slot && <option value="">Unassigned</option>}
+                              {docks.map((dock) => {
+                                const dockBerths = berths.filter((b) => b.dockId === dock.id && (b.enabled !== false) && (dock.enabled !== false));
+                                if (!dockBerths.length) return null;
+                                return (
+                                  <optgroup key={dock.id} label={`Dock ${dock.name || dock.id}`}>
+                                    {dockBerths.map((b) => (
+                                      <option key={b.id} value={b.id}>
+                                        {b.label || b.id}{b.side === "secondary" ? " (far)" : ""}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                );
+                              })}
+                            </select>
                           </div>
                           <div style={{ width: 10, height: 10, borderRadius: 999, background: boat.color, boxShadow: "0 0 0 1px rgba(255,255,255,0.18)" }} />
                         </div>
