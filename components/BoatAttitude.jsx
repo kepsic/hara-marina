@@ -22,10 +22,9 @@ function fmt(v, d = 1) {
  * heelDeg: + = starboard down (heeled to starboard), - = port down.
  * trimDeg: + = bow up,        - = bow down.
  */
-export default function BoatAttitude({ heelDeg, trimDeg, width = 440, height = 200 }) {
+export default function BoatAttitude({ heelDeg, trimDeg }) {
   const hasHeel = isNum(heelDeg);
   const hasTrim = isNum(trimDeg);
-  const half = width / 2;
 
   return (
     <div style={{
@@ -44,15 +43,13 @@ export default function BoatAttitude({ heelDeg, trimDeg, width = 440, height = 2
       </div>
       <div style={{
         display: "grid",
-        gridTemplateColumns: "1fr 1fr",
+        gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
         gap: 12,
       }}>
         <AttitudePanel
           kind="heel"
           deg={hasHeel ? heelDeg : 0}
           hasValue={hasHeel}
-          width={half - 6}
-          height={height}
           warnAbove={15}
           alertAbove={25}
           leftLabel="PORT"
@@ -63,8 +60,6 @@ export default function BoatAttitude({ heelDeg, trimDeg, width = 440, height = 2
           kind="trim"
           deg={hasTrim ? trimDeg : 0}
           hasValue={hasTrim}
-          width={half - 6}
-          height={height}
           warnAbove={5}
           alertAbove={10}
           leftLabel="STERN"
@@ -76,7 +71,14 @@ export default function BoatAttitude({ heelDeg, trimDeg, width = 440, height = 2
   );
 }
 
-function AttitudePanel({ kind, deg, hasValue, width, height, warnAbove, alertAbove, leftLabel, rightLabel, title }) {
+// Logical SVG canvas — actual on-screen size is driven by CSS so the
+// component scales smoothly between phone and desktop layouts.
+const VB_W = 220;
+const VB_H = 200;
+
+function AttitudePanel({ kind, deg, hasValue, warnAbove, alertAbove, leftLabel, rightLabel, title }) {
+  const width = VB_W;
+  const height = VB_H;
   const cx = width / 2;
   const cy = height / 2 + 8;
   const horizonR = Math.min(width, height) * 0.55;
@@ -106,8 +108,9 @@ function AttitudePanel({ kind, deg, hasValue, width, height, warnAbove, alertAbo
       }}>
         {title}
       </div>
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}
-           style={{display:"block"}}>
+      <svg viewBox={`0 0 ${width} ${height}`}
+           preserveAspectRatio="xMidYMid meet"
+           style={{display:"block", width:"100%", height:"auto", maxWidth:280}}>
         <defs>
           <clipPath id={`clip-${kind}`}>
             <circle cx={cx} cy={cy} r={horizonR} />
