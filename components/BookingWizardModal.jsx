@@ -61,7 +61,7 @@ export default function BookingWizardModal({ open, onClose, slot, marinaSlug, on
     return blocked.find((b) => b.from < departure && b.to > arrival) || null;
   }, [blocked, arrival, departure]);
 
-  // Live price quote whenever dates change.
+  // Live price quote whenever dates or boat length change.
   useEffect(() => {
     if (!open || !slot?.berthId) return;
     if (!arrival || !departure || arrival >= departure) {
@@ -70,12 +70,13 @@ export default function BookingWizardModal({ open, onClose, slot, marinaSlug, on
     }
     let cancelled = false;
     const params = new URLSearchParams({ berth: slot.berthId, dock: slot.dockId, arrival, departure });
+    if (loaM && Number(loaM) > 0) params.set("loa", String(loaM));
     fetch(`/api/bookings/quote?${params.toString()}`)
       .then((r) => r.json())
       .then((j) => { if (!cancelled) setQuote(j); })
       .catch(() => { if (!cancelled) setQuote(null); });
     return () => { cancelled = true; };
-  }, [open, slot?.berthId, slot?.dockId, arrival, departure]);
+  }, [open, slot?.berthId, slot?.dockId, arrival, departure, loaM]);
 
   if (!open || !slot) return null;
 

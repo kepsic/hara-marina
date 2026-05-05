@@ -31,10 +31,13 @@ export default async function handler(req, res) {
       currency: typeof body.currency === "string" && body.currency.length === 3
         ? body.currency.toUpperCase()
         : current.currency,
+      loaTiers: sanitiseLoaTiers(body.loaTiers, current.loaTiers),
       defaultNightCents: clampInt(body.defaultNightCents, 0, 1_000_000, current.defaultNightCents),
       perDockOverrides: sanitiseOverrides(body.perDockOverrides, current.perDockOverrides),
       perBerthOverrides: sanitiseOverrides(body.perBerthOverrides, current.perBerthOverrides),
       seasonal: sanitiseSeasonal(body.seasonal, current.seasonal),
+      shortStayCents: clampInt(body.shortStayCents, 0, 1_000_000, current.shortStayCents),
+      slipCents: clampInt(body.slipCents, 0, 1_000_000, current.slipCents),
       platformFeePercent: superAdmin
         ? clampNum(body.platformFeePercent, 0, 100, current.platformFeePercent)
         : current.platformFeePercent,
@@ -83,6 +86,25 @@ function sanitiseSeasonal(input, fallback) {
     const m = Number(r.multiplier);
     if (!from || !to || !Number.isFinite(m) || m <= 0 || m > 10) continue;
     out.push({ from, to, multiplier: m });
+  }
+  return out;
+}
+
+function sanitiseLoaTiers(input, fallback) {
+  if (!Array.isArray(input)) return fallback;
+  const out = [];
+  for (const t of input) {
+    if (!t || typeof t !== "object") continue;
+    const cents = Number(t.nightCents);
+    if (!Number.isFinite(cents) || cents < 0 || cents > 1_000_000) continue;
+    let max = t.maxLoaM;
+    if (max === null || max === "" || max === undefined) max = null;
+    else {
+      const n = Number(max);
+      if (!Number.isFinite(n) || n <= 0 || n > 200) continue;
+      max = n;
+    }
+    out.push({ maxLoaM: max, nightCents: Math.round(cents) });
   }
   return out;
 }

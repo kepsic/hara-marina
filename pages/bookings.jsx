@@ -337,6 +337,53 @@ function PricingSettingsModal({ onClose, isSuperAdmin }) {
             </fieldset>
 
             <fieldset style={{ border: "1px solid #1c3346", borderRadius: 6, padding: 12 }}>
+              <legend style={{ fontSize: 12, color: "#7eabc8", padding: "0 6px" }}>Length-based nightly tiers (LOA)</legend>
+              <div style={{ fontSize: 11, color: "#5a7e96", marginBottom: 6 }}>
+                Picked when the guest's boat length is known. Per-berth or per-dock overrides win over tiers; tiers win over the default rate. Last tier with empty "up to" means "and above".
+              </div>
+              {(cfg.loaTiers || []).length === 0 && <div style={{ fontSize: 12, color: "#5a7e96" }}>No tiers — using default rate for all boats.</div>}
+              {(cfg.loaTiers || []).map((t, i) => (
+                <div key={i} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12, color: "#7eabc8" }}>up to</span>
+                  <input type="number" step="0.5" min="0" placeholder="∞" style={{ ...inp, width: 80 }}
+                    value={t.maxLoaM == null ? "" : t.maxLoaM}
+                    onChange={(e) => {
+                      const v = e.target.value === "" ? null : Number(e.target.value);
+                      const next = [...cfg.loaTiers];
+                      next[i] = { ...t, maxLoaM: v };
+                      update({ loaTiers: next });
+                    }} />
+                  <span style={{ fontSize: 12, color: "#7eabc8" }}>m →</span>
+                  <input type="number" min="0" style={{ ...inp, width: 100 }} value={t.nightCents}
+                    onChange={(e) => {
+                      const next = [...cfg.loaTiers];
+                      next[i] = { ...t, nightCents: Number(e.target.value) };
+                      update({ loaTiers: next });
+                    }} />
+                  <span style={{ fontSize: 11, color: "#5a7e96" }}>cents/night ({(t.nightCents / 100).toFixed(2)} {cfg.currency})</span>
+                  <button onClick={() => update({ loaTiers: cfg.loaTiers.filter((_, j) => j !== i) })} style={{ background: "transparent", color: "#c25c4a", border: "none", cursor: "pointer", fontSize: 16 }}>×</button>
+                </div>
+              ))}
+              <button onClick={() => update({ loaTiers: [...(cfg.loaTiers || []), { maxLoaM: null, nightCents: cfg.defaultNightCents }] })} style={{ background: "#1f6fa8", color: "#fff", border: "none", padding: "4px 10px", borderRadius: 4, cursor: "pointer", fontSize: 12, marginTop: 4 }}>+ Tier</button>
+            </fieldset>
+
+            <fieldset style={{ border: "1px solid #1c3346", borderRadius: 6, padding: 12 }}>
+              <legend style={{ fontSize: 12, color: "#7eabc8", padding: "0 6px" }}>Extras (informational, shown in welcome email)</legend>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <label style={lbl}>
+                  Short stay (≤5h, cents)
+                  <input type="number" style={inp} value={cfg.shortStayCents ?? 0} onChange={(e) => update({ shortStayCents: Number(e.target.value) })} />
+                  <span style={{ fontSize: 11, color: "#5a7e96" }}>{((cfg.shortStayCents ?? 0) / 100).toFixed(2)} {cfg.currency}</span>
+                </label>
+                <label style={lbl}>
+                  Slip use (cents/vessel)
+                  <input type="number" style={inp} value={cfg.slipCents ?? 0} onChange={(e) => update({ slipCents: Number(e.target.value) })} />
+                  <span style={{ fontSize: 11, color: "#5a7e96" }}>{((cfg.slipCents ?? 0) / 100).toFixed(2)} {cfg.currency}</span>
+                </label>
+              </div>
+            </fieldset>
+
+            <fieldset style={{ border: "1px solid #1c3346", borderRadius: 6, padding: 12 }}>
               <legend style={{ fontSize: 12, color: "#7eabc8", padding: "0 6px" }}>Per-dock overrides</legend>
               {Object.entries(cfg.perDockOverrides || {}).length === 0 && <div style={{ fontSize: 12, color: "#5a7e96" }}>None — using default rate.</div>}
               {Object.entries(cfg.perDockOverrides || {}).map(([k, v]) => (
