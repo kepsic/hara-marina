@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Tooltip } from "react-leaflet";
 import BoatWindRose from "./BoatWindRose";
 import WindCanvas from "./WindCanvas";
 
@@ -153,14 +153,6 @@ export default function MarinaMapView({
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        {active.pierLines.map((line, i) => (
-          <Polyline
-            key={i}
-            positions={line}
-            pathOptions={{ color: "#c8a050", weight: 4, opacity: 0.9 }}
-          />
-        ))}
-
         {(["A", "B", "C"]).flatMap((sectionId) => {
           const sectionBoats = active.reverseBoatOrder ? [...bySection[sectionId]].reverse() : bySection[sectionId];
           return sectionBoats.map((boat, idx) => {
@@ -194,19 +186,6 @@ export default function MarinaMapView({
             );
           });
         })}
-
-        <CircleMarker
-          center={active.fuelDock}
-          radius={7}
-          pathOptions={{
-            color: "#5a4010",
-            weight: 1.5,
-            fillColor: "#d3a850",
-            fillOpacity: 1,
-          }}
-        >
-          <Tooltip>Fuel dock</Tooltip>
-        </CircleMarker>
       </MapContainer>
 
       <WindCanvas
@@ -343,12 +322,10 @@ export default function MarinaMapView({
                 style={{ width: "100%", marginBottom: 8, background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
               >
                 <option value="center">Map center</option>
-                <option value="piers">Pier lines</option>
                 <option value="berths-all">All berths</option>
                 <option value="berths-A">Berths A</option>
                 <option value="berths-B">Berths B</option>
                 <option value="berths-C">Berths C</option>
-                <option value="fuel">Fuel dock</option>
               </select>
 
               <div style={{ fontSize: 10, marginBottom: 6 }}>Boat order</div>
