@@ -423,15 +423,18 @@ function dockAxisStep(layout, dockId, meters) {
 // parallel columns (two-sided), evenly spaced along the dock heading axis.
 // Preserves per-berth metadata (label, occupancy, size limits, side), only
 // rewrites `pos`. Anchored on the current dock center so the dock stays put.
-function arrangeBerthsAlongDock(layout, dockId, { spacingM = 12, sideOffsetM = 7 } = {}) {
+function arrangeBerthsAlongDock(layout, dockId, { spacingM, sideOffsetM = 4 } = {}) {
   const next = cloneLayout(layout);
   const dock = getDocks(next).find((d) => d.id === dockId);
   if (!dock) return next;
+  const spacing = Number.isFinite(spacingM)
+    ? spacingM
+    : (Number.isFinite(dock.berthSpacingM) ? dock.berthSpacingM : 5);
   const dockBerths = getBerths(next).filter((b) => b.dockId === dockId);
   if (!dockBerths.length) return next;
   const isDouble = dock.berthMode === "double";
   const center = dockCenter(next, dockId);
-  const along = dockAxisStep(next, dockId, spacingM);
+  const along = dockAxisStep(next, dockId, spacing);
   const alongVec = [along[0], along[1]];
   // Build a unit-direction vector for perpendicular offset (re-uses
   // offsetFromVector with `lineVec` = along-dock). offsetFromVector needs
@@ -506,7 +509,9 @@ function addBerth(layout, dockId) {
   // For two-sided docks alternate sides so columns grow evenly. For one-sided,
   // always primary.
   const side = mode === "double" && secondary.length < primary.length ? "secondary" : "primary";
-  const along = dockAxisStep(next, dockId, 12);
+  const spacing = Number.isFinite(dock.berthSpacingM) ? dock.berthSpacingM : 5;
+  const sideOffset = 4;
+  const along = dockAxisStep(next, dockId, spacing);
   let pos;
   if (side === "secondary") {
     // Place this secondary opposite the matching primary (same row index).
@@ -514,16 +519,16 @@ function addBerth(layout, dockId) {
     const anchor = primary[Math.min(rowIdx, primary.length - 1)]?.pos
       || dockCenter(next, dockId)
       || DEFAULT_LAYOUT.center;
-    pos = offsetFromVector(anchor, along, 7, 1);
+    pos = offsetFromVector(anchor, along, sideOffset, 1);
   } else if (primary.length) {
     // Step along the dock axis from the last primary berth.
     const last = primary[primary.length - 1].pos;
     pos = [last[0] + along[0], last[1] + along[1]];
-    if (mode === "double") pos = offsetFromVector(pos, along, 7, -1);
+    if (mode === "double") pos = offsetFromVector(pos, along, sideOffset, -1);
   } else {
     // First berth on the dock — anchor at dock center, offset to its side if double.
     const center = dockCenter(next, dockId) || DEFAULT_LAYOUT.center;
-    pos = mode === "double" ? offsetFromVector(center, along, 7, -1) : center;
+    pos = mode === "double" ? offsetFromVector(center, along, sideOffset, -1) : center;
   }
   const idx = dockBerths.length + 1;
   next.berths = [
@@ -1344,6 +1349,18 @@ export default function MarinaMapView({
                           </label>
                           <span>Heading {Math.round(dock.headingDeg ?? 270)}°</span>
                           <span>{dockBerths.length} berth{dockBerths.length === 1 ? "" : "s"}</span>
+                        </div>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "auto 90px auto", gap: 6, alignItems: "center", marginBottom: 8, fontSize: 10, color: "#7eabc8" }} title="Distance (in metres) between adjacent berth centres along the dock. Smaller = boats packed tighter. Typical: 4–6 m for beam-to-dock berths, 12–14 m for stern-to-dock with finger piers.">
+                          <span>Berth spacing:</span>
+                          <input
+                            type="number" min="1" step="0.5"
+                            value={Number.isFinite(dock.berthSpacingM) ? dock.berthSpacingM : ""}
+                            onChange={(e) => setDraft((current) => updateDockField(current || active, dock.id, { berthSpacingM: e.target.value === "" ? null : Number(e.target.value) }))}
+                            placeholder="5"
+                            style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4, fontSize: 10, padding: "2px 4px" }}
+                          />
+                          <span>m (apply with Auto-arrange)</span>
                         </div>
 
                         {dock.bookable && (

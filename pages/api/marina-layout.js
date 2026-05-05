@@ -154,6 +154,7 @@ function cleanDocks(raw, fallback) {
       defaultMaxLengthM: Number.isFinite(Number(entry?.defaultMaxLengthM)) && Number(entry?.defaultMaxLengthM) > 0 ? Math.round(Number(entry?.defaultMaxLengthM) * 100) / 100 : null,
       defaultMaxBeamM: Number.isFinite(Number(entry?.defaultMaxBeamM)) && Number(entry?.defaultMaxBeamM) > 0 ? Math.round(Number(entry?.defaultMaxBeamM) * 100) / 100 : null,
       defaultMaxDraftM: Number.isFinite(Number(entry?.defaultMaxDraftM)) && Number(entry?.defaultMaxDraftM) > 0 ? Math.round(Number(entry?.defaultMaxDraftM) * 100) / 100 : null,
+      berthSpacingM: Number.isFinite(Number(entry?.berthSpacingM)) && Number(entry?.berthSpacingM) > 0 ? Math.round(Number(entry?.berthSpacingM) * 100) / 100 : null,
     });
   }
   return out.length ? out : clone(fallback);
