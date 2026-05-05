@@ -423,11 +423,14 @@ function dockAxisStep(layout, dockId, meters) {
 // parallel columns (two-sided), evenly spaced along the dock heading axis.
 // Preserves per-berth metadata (label, occupancy, size limits, side), only
 // rewrites `pos`. Anchored on the current dock center so the dock stays put.
-function arrangeBerthsAlongDock(layout, dockId, { spacingM = 5, sideOffsetM = 4 } = {}) {
+function arrangeBerthsAlongDock(layout, dockId, { spacingM = 5, sideOffsetM } = {}) {
   const next = cloneLayout(layout);
   const dock = getDocks(next).find((d) => d.id === dockId);
   if (!dock) return next;
   const spacing = spacingM;
+  const sideOff = Number.isFinite(sideOffsetM)
+    ? sideOffsetM
+    : (Number.isFinite(dock.sideOffsetM) ? dock.sideOffsetM : 4);
   const dockBerths = getBerths(next).filter((b) => b.dockId === dockId);
   if (!dockBerths.length) return next;
   const isDouble = dock.berthMode === "double";
@@ -451,12 +454,12 @@ function arrangeBerthsAlongDock(layout, dockId, { spacingM = 5, sideOffsetM = 4 
   const updates = new Map();
   primarySrc.forEach((berth, idx) => {
     const base = rowPos[idx] || rowPos[rowPos.length - 1];
-    const pos = isDouble ? offsetFromVector(base, alongVec, sideOffsetM, -1) : base;
+    const pos = isDouble ? offsetFromVector(base, alongVec, sideOff, -1) : base;
     updates.set(berth.id, pos);
   });
   secondarySrc.forEach((berth, idx) => {
     const base = rowPos[idx] || rowPos[rowPos.length - 1];
-    const pos = offsetFromVector(base, alongVec, sideOffsetM, 1);
+    const pos = offsetFromVector(base, alongVec, sideOff, 1);
     updates.set(berth.id, pos);
   });
   next.berths = getBerths(next).map((b) => (
@@ -508,7 +511,7 @@ function addBerth(layout, dockId) {
   // always primary.
   const side = mode === "double" && secondary.length < primary.length ? "secondary" : "primary";
   const spacing = 5;
-  const sideOffset = 4;
+  const sideOffset = Number.isFinite(dock.sideOffsetM) ? dock.sideOffsetM : 4;
   const along = dockAxisStep(next, dockId, spacing);
   let pos;
   if (side === "secondary") {
@@ -1348,6 +1351,20 @@ export default function MarinaMapView({
                           <span>Heading {Math.round(dock.headingDeg ?? 270)}°</span>
                           <span>{dockBerths.length} berth{dockBerths.length === 1 ? "" : "s"}</span>
                         </div>
+
+                        {dock.berthMode === "double" && (
+                          <div style={{ display: "grid", gridTemplateColumns: "auto 80px auto", gap: 6, alignItems: "center", marginBottom: 8, fontSize: 10, color: "#7eabc8" }} title="Distance (in metres) from the dock centerline to each column of berths. Total column-to-column distance is 2× this. Default 4 m. Apply with Auto-arrange.">
+                            <span>Column offset:</span>
+                            <input
+                              type="number" min="0.5" step="0.5"
+                              value={Number.isFinite(dock.sideOffsetM) ? dock.sideOffsetM : ""}
+                              onChange={(e) => setDraft((current) => updateDockField(current || active, dock.id, { sideOffsetM: e.target.value === "" ? null : Number(e.target.value) }))}
+                              placeholder="4"
+                              style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4, fontSize: 10, padding: "2px 4px" }}
+                            />
+                            <span>m from centerline</span>
+                          </div>
+                        )}
 
                         {dock.bookable && (
                           <div style={{ display: "grid", gridTemplateColumns: "auto repeat(3, 1fr)", gap: 4, alignItems: "center", marginBottom: 8, fontSize: 10, color: "#7eabc8" }} title="Default size limits inherited by all berths in this dock unless overridden per-berth.">
