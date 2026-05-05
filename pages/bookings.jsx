@@ -176,6 +176,22 @@ export default function BookingsAdminPage() {
               <div><b>Boat:</b> {selected.boatName} ({selected.loaM}×{selected.beamM}×{selected.draftM} m)</div>
               <div><b>Price:</b> {fmtCents(selected.priceCents, selected.currency)} · payment {selected.paymentStatus}</div>
               {selected.notes && <div><b>Notes:</b> {selected.notes}</div>}
+              {(() => {
+                const n = selected.notifications?.received;
+                if (!n) return <div style={{ color: "#d4a017" }}><b>Email:</b> not sent yet</div>;
+                const ok = n.guest?.ok;
+                const color = ok ? "#3aa86b" : "#c25c4a";
+                const label = ok ? "✓ delivered" : "⚠ failed";
+                return (
+                  <div style={{ color }}>
+                    <b>Email:</b> {label}
+                    {n.guest?.from && <span style={{ color: "#7eabc8" }}> · from {n.guest.from}</span>}
+                    {n.guest?.fellBack && <span style={{ color: "#d4a017" }}> · fell back to resend.dev</span>}
+                    {!ok && n.guest?.error && <div style={{ fontSize: 11, color: "#e8b090", marginTop: 2 }}>{String(n.guest.error).slice(0, 200)}</div>}
+                    {n.at && <div style={{ fontSize: 11, color: "#7eabc8" }}>at {n.at}{n.resentBy ? ` · resent by ${n.resentBy}` : ""}</div>}
+                  </div>
+                );
+              })()}
             </div>
             <div style={{ display: "flex", gap: 8, marginTop: 18, flexWrap: "wrap" }}>
               {selected.status === "pending" && (
@@ -196,6 +212,18 @@ export default function BookingsAdminPage() {
               {selected.paymentStatus !== "paid" && (
                 <button disabled={busy} onClick={() => patch(selected.id, { paymentStatus: "paid" })} style={{ background: "#3aa86b", color: "#fff", border: "none", padding: "8px 14px", borderRadius: 4, cursor: "pointer" }}>Mark paid</button>
               )}
+              <button disabled={busy} onClick={async () => {
+                setBusy(true);
+                try {
+                  const r = await fetch(`/api/bookings/${selected.id}/resend`, { method: "POST" });
+                  const j = await r.json();
+                  if (j.booking) setSelected(j.booking);
+                  if (!r.ok) alert(j.error || "resend failed");
+                  await refresh();
+                } finally {
+                  setBusy(false);
+                }
+              }} style={{ background: "#36566b", color: "#fff", border: "none", padding: "8px 14px", borderRadius: 4, cursor: "pointer" }}>Resend email</button>
             </div>
           </div>
         </div>

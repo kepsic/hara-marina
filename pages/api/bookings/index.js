@@ -1,6 +1,6 @@
 import { verifySession, SESSION_COOKIE_NAME } from "../../../lib/auth";
 import { isHarborMaster } from "../../../lib/owners";
-import { listBookings, createBooking } from "../../../lib/bookings";
+import { listBookings, createBooking, updateBooking } from "../../../lib/bookings";
 import { sendBookingReceived } from "../../../lib/email";
 
 export default async function handler(req, res) {
@@ -29,14 +29,20 @@ export default async function handler(req, res) {
       const booking = await createBooking(body);
       // Await the email so the Vercel lambda doesn't freeze before Resend
       // returns. We swallow errors so a transient mail outage never blocks the
-      // booking from landing in the harbor master's queue.
+      // booking from landing in the harbor master's queue, but we DO record
+      // the result so the harbor master can see if delivery failed.
+      let notification = null;
       try {
-        const result = await sendBookingReceived(booking);
-        console.log("[bookings] sendBookingReceived", booking.id, result);
+        notification = await sendBookingReceived(booking);
+        console.log("[bookings] sendBookingReceived", booking.id, JSON.stringify(notification));
       } catch (err) {
         console.error("[bookings] sendBookingReceived failed:", err);
+        notification = { error: String(err?.message || err) };
       }
-      return res.status(201).json({ booking });
+      const stored = await updateBooking(booking.id, {
+        notifications: { received: { ...notification, at: new Date().toISOString() } },
+      });
+      return res.status(201).json({ booking: stored || booking });
     } catch (err) {
       const code = err?.code === "UNAVAILABLE" ? 409
         : err?.code?.startsWith("BAD_") ? 400
