@@ -132,6 +132,7 @@ function orderedBerthSlots(layout) {
         berthId: berth.id,
         dockId: dock.id,
         dockName: dock.name || dock.id,
+        dockBookable: dock.bookable === true,
         label: berth.label || berth.id,
         side: berth.side || "primary",
         pos: berth.pos,
@@ -732,17 +733,21 @@ export default function MarinaMapView({
           const boat = assignedBoats[idx];
           if (boat) return null;
           const berth = berths.find((b) => b.id === slot.berthId);
-          const occupied = berth?.occupied === true;
+          const bookable = slot.dockBookable;
+          // Home-fleet berths (non-bookable) without an assigned boat: show solid
+          // silhouette to indicate the berth belongs to a boat that is currently
+          // away or not telemetry-tracked.
+          // Bookable berths: show solid + G if occupied, dashed outline if free.
+          const occupied = bookable ? berth?.occupied === true : true;
           const guestLabel = berth?.guestLabel || "";
-          const showAsEmpty = !occupied && !(isSuperAdmin && editMode);
-          if (showAsEmpty) return null;
           return (
             <Marker
-              key={`guest-${slot.berthId}`}
+              key={`empty-${slot.berthId}`}
               position={slot.pos}
               icon={guestBerthIcon(occupied, slot.headingDeg, zoom)}
               eventHandlers={{
                 click: () => {
+                  if (!bookable) return;
                   if (!(isSuperAdmin && editMode)) return;
                   setDraft((current) => updateBerthField(current || active, slot.berthId, { occupied: !occupied }));
                 },
@@ -750,13 +755,15 @@ export default function MarinaMapView({
             >
               <Tooltip direction="top" offset={[0, -6]}>
                 <div style={{ fontSize: 11, fontWeight: "bold" }}>
-                  {occupied ? (guestLabel ? `Guest · ${guestLabel}` : "Guest berth · occupied") : "Free berth"}
+                  {bookable
+                    ? (occupied ? (guestLabel ? `Guest · ${guestLabel}` : "Guest berth · occupied") : "Guest berth · free")
+                    : "Home berth · away"}
                 </div>
                 <div style={{ fontSize: 10, opacity: 0.85 }}>
                   Dock {slot.dockName} · {slot.label}
                   {slot.side === "secondary" ? " · far side" : ""}
                 </div>
-                {isSuperAdmin && editMode ? (
+                {bookable && isSuperAdmin && editMode ? (
                   <div style={{ fontSize: 10, marginTop: 4, color: "#1f6fa8", fontWeight: 600 }}>
                     Click → mark {occupied ? "free" : "occupied"}
                   </div>
@@ -1206,7 +1213,7 @@ export default function MarinaMapView({
                             <option value="double">Two-sided</option>
                           </select>
                         </div>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8, fontSize: 10, color: "#7eabc8" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8, fontSize: 10, color: "#7eabc8", flexWrap: "wrap" }}>
                           <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <input
                               type="checkbox"
@@ -1214,6 +1221,14 @@ export default function MarinaMapView({
                               onChange={(e) => setDraft((current) => updateDockField(current || active, dock.id, { enabled: e.target.checked }))}
                             />
                             Enabled
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6, color: dock.bookable ? "#f0c040" : "#7eabc8" }} title="Bookable docks treat berths as guest/transient. Free berths show a dashed silhouette; occupied berths show a solid grey 'G' boat. Home docks are always rendered occupied unless a tracked boat is assigned.">
+                            <input
+                              type="checkbox"
+                              checked={dock.bookable === true}
+                              onChange={(e) => setDraft((current) => updateDockField(current || active, dock.id, { bookable: e.target.checked }))}
+                            />
+                            Bookable (guest)
                           </label>
                           <span>Heading {Math.round(dock.headingDeg ?? 270)}°</span>
                           <span>{dockBerths.length} berth{dockBerths.length === 1 ? "" : "s"}</span>
@@ -1270,11 +1285,12 @@ export default function MarinaMapView({
                                     ✕
                                   </button>
                                 </div>
-                                <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 4, alignItems: "center", paddingLeft: 4 }}>
+                                <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 4, alignItems: "center", paddingLeft: 4, opacity: dock.bookable ? 1 : 0.4 }}>
                                   <label style={{ fontSize: 10, color: berth.occupied ? "#e8b090" : "#7eabc8", display: "flex", alignItems: "center", gap: 4 }}>
                                     <input
                                       type="checkbox"
                                       checked={berth.occupied === true}
+                                      disabled={!dock.bookable}
                                       onChange={(e) => setDraft((current) => updateBerthField(current || active, berth.id, { occupied: e.target.checked }))}
                                     />
                                     Occupied
@@ -1282,9 +1298,9 @@ export default function MarinaMapView({
                                   <input
                                     value={berth.guestLabel || ""}
                                     onChange={(e) => setDraft((current) => updateBerthField(current || active, berth.id, { guestLabel: e.target.value.slice(0, 32) }))}
-                                    placeholder="Guest name / note (optional)"
-                                    disabled={berth.occupied !== true}
-                                    style={{ background: "#102537", color: berth.occupied ? "#dcecf5" : "#6a8395", border: "1px solid #36566b", borderRadius: 4, fontSize: 10, padding: "3px 5px" }}
+                                    placeholder={dock.bookable ? "Guest name / note (optional)" : "(home berth — bookable disabled)"}
+                                    disabled={!dock.bookable || berth.occupied !== true}
+                                    style={{ background: "#102537", color: dock.bookable && berth.occupied ? "#dcecf5" : "#6a8395", border: "1px solid #36566b", borderRadius: 4, fontSize: 10, padding: "3px 5px" }}
                                   />
                                 </div>
                               </div>

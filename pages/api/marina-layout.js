@@ -149,6 +149,7 @@ function cleanDocks(raw, fallback) {
       name: normText(entry?.name, id, 24),
       berthMode: entry?.berthMode === "double" ? "double" : "single",
       enabled: entry?.enabled !== false,
+      bookable: entry?.bookable === true,
       headingDeg: normalizeDeg(entry?.headingDeg, 270),
     });
   }
