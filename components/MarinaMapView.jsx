@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { divIcon } from "leaflet";
-import { MapContainer, TileLayer, Marker, Tooltip, useMapEvents } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Polyline, Tooltip, useMapEvents } from "react-leaflet";
 import BoatWindRose from "./BoatWindRose";
 import WindCanvas from "./WindCanvas";
 
@@ -281,6 +281,25 @@ function MapZoomTracker({ onZoomChange }) {
   return null;
 }
 
+function MapClickTracker({ onMapClick }) {
+  useMapEvents({
+    click: (event) => onMapClick?.(event.latlng),
+  });
+  return null;
+}
+
+function dockMarkerIcon(label, selected) {
+  const border = selected ? "rgba(240,192,64,0.95)" : "rgba(126,171,200,0.78)";
+  const bg = selected ? "rgba(240,192,64,0.2)" : "rgba(8,24,40,0.72)";
+  const color = selected ? "#f0c040" : "#9ec8e0";
+  return divIcon({
+    className: "hara-dock-marker",
+    html: `<div style="min-width:18px;height:18px;padding:0 5px;display:flex;align-items:center;justify-content:center;border-radius:999px;border:1px solid ${border};background:${bg};color:${color};font-size:10px;font-weight:700;letter-spacing:0.6px;">${label}</div>`,
+    iconSize: [28, 18],
+    iconAnchor: [14, 9],
+  });
+}
+
 function nextDockId(docks) {
   const used = new Set((docks || []).map((dock) => String(dock.id)));
   for (let i = 0; i < 26; i += 1) {
@@ -403,6 +422,64 @@ function updateBerthField(layout, berthId, patch) {
   return next;
 }
 
+function dockCenter(layout, dockId) {
+  const points = getBerths(layout).filter((berth) => berth.dockId === dockId).map((berth) => berth.pos);
+  return averagePoint(points);
+}
+
+function drawDockFromLine(layout, { start, end, name, berthMode, headingDeg, enabled, berthCount }) {
+  const next = cloneLayout(layout);
+  const docks = getDocks(next);
+  const id = nextDockId(docks);
+  const safeName = String(name || id).trim().slice(0, 24) || id;
+  const safeMode = berthMode === "double" ? "double" : "single";
+  const safeHeading = normalizeDeg(headingDeg, 270);
+  const safeEnabled = enabled !== false;
+  const count = Math.max(1, Math.min(24, Number(berthCount) || 4));
+  const s = [Number(start?.lat ?? start?.[0]), Number(start?.lng ?? start?.[1])];
+  const e = [Number(end?.lat ?? end?.[0]), Number(end?.lng ?? end?.[1])];
+  const v = vectorBetween(e, s);
+  const isTiny = Math.hypot(v[0], v[1]) < 0.00001;
+  const fallbackEnd = shiftedPoint(s, -0.00012, 0.00018);
+  const lineEnd = isTiny ? fallbackEnd : e;
+  const lineVec = vectorBetween(lineEnd, s);
+
+  const primaryCount = safeMode === "double" ? Math.ceil(count / 2) : count;
+  const secondaryCount = safeMode === "double" ? Math.floor(count / 2) : 0;
+  const denom = Math.max(1, primaryCount - 1);
+  const primary = Array.from({ length: primaryCount }, (_, idx) => {
+    const ratio = primaryCount === 1 ? 0 : idx / denom;
+    return [s[0] + lineVec[0] * ratio, s[1] + lineVec[1] * ratio];
+  });
+  const secondary = Array.from({ length: secondaryCount }, (_, idx) => {
+    const anchor = primary[Math.min(idx, primary.length - 1)];
+    return offsetFromVector(anchor, lineVec, 7, 1);
+  });
+
+  next.docks = [
+    ...docks,
+    { id, name: safeName, berthMode: safeMode, enabled: safeEnabled, headingDeg: safeHeading },
+  ];
+
+  const all = [
+    ...primary.map((pos, idx) => ({ pos, side: "primary", sort: idx })),
+    ...secondary.map((pos, idx) => ({ pos, side: "secondary", sort: idx })),
+  ];
+  const startIdx = getBerths(next).length + 1;
+  const createdBerths = all.map((entry, idx) => ({
+    id: `${id}-${idx + 1}`,
+    dockId: id,
+    label: `${safeName}${idx + 1}`,
+    side: entry.side,
+    enabled: true,
+    pos: entry.pos,
+    headingDeg: null,
+    sort: startIdx + idx,
+  }));
+  next.berths = [...getBerths(next), ...createdBerths];
+  return { layout: next, dockId: id };
+}
+
 export default function MarinaMapView({
   boats,
   selectedId,
@@ -428,6 +505,14 @@ export default function MarinaMapView({
   const [zoom, setZoom] = useState(17);
   const [orderDragId, setOrderDragId] = useState(null);
   const [orderDragOverId, setOrderDragOverId] = useState(null);
+  const [selectedDockId, setSelectedDockId] = useState(null);
+  const [drawDockMode, setDrawDockMode] = useState(false);
+  const [drawDockStart, setDrawDockStart] = useState(null);
+  const [drawDockName, setDrawDockName] = useState("");
+  const [drawDockModeSide, setDrawDockModeSide] = useState("single");
+  const [drawDockBerthCount, setDrawDockBerthCount] = useState(4);
+  const [drawDockHeading, setDrawDockHeading] = useState(270);
+  const [drawDockEnabled, setDrawDockEnabled] = useState(true);
 
   useEffect(() => {
     setDraft(layout || DEFAULT_LAYOUT);
@@ -473,6 +558,15 @@ export default function MarinaMapView({
   }, [docks]);
 
   useEffect(() => {
+    if (!docks.length) {
+      setSelectedDockId(null);
+      return;
+    }
+    if (selectedDockId && docks.some((dock) => dock.id === selectedDockId)) return;
+    setSelectedDockId(docks[0].id);
+  }, [docks, selectedDockId]);
+
+  useEffect(() => {
     if (!targetOptions.some((option) => option.value === target)) setTarget("berths-all");
   }, [target, targetOptions]);
 
@@ -509,6 +603,34 @@ export default function MarinaMapView({
     setOrderDragOverId(null);
   }
 
+  function selectDock(dockId) {
+    setSelectedDockId(dockId);
+    setTarget(`dock:${dockId}`);
+    setHeadingTarget(`dock:${dockId}`);
+  }
+
+  function handleMapClick(latlng) {
+    if (!isSuperAdmin || !editMode || !drawDockMode) return;
+    if (!drawDockStart) {
+      setDrawDockStart([latlng.lat, latlng.lng]);
+      return;
+    }
+    const created = drawDockFromLine(active, {
+      start: { lat: drawDockStart[0], lng: drawDockStart[1] },
+      end: latlng,
+      name: drawDockName,
+      berthMode: drawDockModeSide,
+      headingDeg: drawDockHeading,
+      enabled: drawDockEnabled,
+      berthCount: drawDockBerthCount,
+    });
+    setDraft(created.layout);
+    selectDock(created.dockId);
+    setDrawDockName("");
+    setDrawDockStart(null);
+    setDrawDockMode(false);
+  }
+
   return (
     <div
       style={{
@@ -527,6 +649,7 @@ export default function MarinaMapView({
         scrollWheelZoom
       >
         <MapZoomTracker onZoomChange={setZoom} />
+        <MapClickTracker onMapClick={handleMapClick} />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -559,6 +682,38 @@ export default function MarinaMapView({
             </Marker>
           );
         })}
+
+        {docks.map((dock) => {
+          const center = dockCenter(active, dock.id);
+          return (
+            <Marker
+              key={`dock-marker-${dock.id}`}
+              position={center}
+              icon={dockMarkerIcon(dock.name || dock.id, selectedDockId === dock.id)}
+              eventHandlers={{ click: () => selectDock(dock.id) }}
+            >
+              <Tooltip direction="top" offset={[0, -6]}>
+                <div style={{ fontSize: 11, fontWeight: "bold" }}>Dock {dock.name || dock.id}</div>
+                <div style={{ fontSize: 10, opacity: 0.85 }}>
+                  {dock.berthMode === "double" ? "Two-sided" : "One-sided"} · {(dock.enabled === false) ? "disabled" : "enabled"}
+                </div>
+              </Tooltip>
+            </Marker>
+          );
+        })}
+
+        {drawDockMode && drawDockStart && (
+          <Marker
+            position={drawDockStart}
+            icon={dockMarkerIcon("START", true)}
+          >
+            <Tooltip direction="top" offset={[0, -6]}>Click second point to finish dock line</Tooltip>
+          </Marker>
+        )}
+
+        {drawDockMode && drawDockStart && (
+          <Polyline positions={[drawDockStart, shiftedPoint(drawDockStart, -0.00012, 0.00018)]} pathOptions={{ color: "#f0c040", weight: 2, dashArray: "6,6" }} />
+        )}
       </MapContainer>
 
       {showWindCanvas && (
@@ -591,6 +746,7 @@ export default function MarinaMapView({
       >
         Tap a berth marker to open boat details.
         {berthSlots.length < boats.length ? ` ${boats.length - berthSlots.length} boat${boats.length - berthSlots.length === 1 ? "" : "s"} currently have no berth.` : ""}
+        {isSuperAdmin && editMode && drawDockMode ? " Draw mode: click map twice to create dock." : ""}
       </div>
 
       <div
@@ -779,8 +935,78 @@ export default function MarinaMapView({
                   + Add dock
                 </button>
               </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, marginBottom: 8 }}>
+                <select
+                  value={selectedDockId || ""}
+                  onChange={(e) => selectDock(e.target.value)}
+                  style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
+                >
+                  {docks.map((dock) => (
+                    <option key={dock.id} value={dock.id}>Select Dock {dock.name || dock.id}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => {
+                    setDrawDockMode((value) => !value);
+                    setDrawDockStart(null);
+                  }}
+                  style={{
+                    cursor: "pointer",
+                    borderRadius: 4,
+                    border: "1px solid rgba(126,171,200,0.25)",
+                    background: drawDockMode ? "rgba(240,192,64,0.2)" : "rgba(255,255,255,0.05)",
+                    color: drawDockMode ? "#f0c040" : "#dcecf5",
+                    padding: "4px 8px",
+                    fontSize: 10,
+                  }}
+                >
+                  {drawDockMode ? "Cancel draw" : "Draw dock"}
+                </button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 10 }}>
+                <input
+                  value={drawDockName}
+                  onChange={(e) => setDrawDockName(e.target.value.slice(0, 24))}
+                  placeholder="New dock name"
+                  style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
+                />
+                <select
+                  value={drawDockModeSide}
+                  onChange={(e) => setDrawDockModeSide(e.target.value)}
+                  style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
+                >
+                  <option value="single">One-sided</option>
+                  <option value="double">Two-sided</option>
+                </select>
+                <input
+                  type="number"
+                  min="1"
+                  max="24"
+                  value={drawDockBerthCount}
+                  onChange={(e) => setDrawDockBerthCount(Math.max(1, Math.min(24, Number(e.target.value) || 1)))}
+                  placeholder="Initial berths"
+                  style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
+                />
+                <input
+                  type="number"
+                  min="0"
+                  max="359"
+                  value={drawDockHeading}
+                  onChange={(e) => setDrawDockHeading(normalizeDeg(e.target.value, 270))}
+                  placeholder="Heading"
+                  style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
+                />
+                <label style={{ fontSize: 10, color: "#7eabc8", display: "flex", alignItems: "center", gap: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={drawDockEnabled}
+                    onChange={(e) => setDrawDockEnabled(e.target.checked)}
+                  />
+                  New dock enabled
+                </label>
+              </div>
               <div style={{ fontSize: 10, color: "#7eabc8", marginBottom: 10 }}>
-                Each berth stores its own label, side, enabled state and optional heading override. Use Target above to nudge a whole dock or one berth after adding it.
+                Draw dock: click Draw dock, then click start and end points on the map. You can also click any dock bubble on map to select it, then edit details below.
               </div>
 
               <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
