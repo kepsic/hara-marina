@@ -1503,7 +1503,10 @@ function WatchkeeperPanel({ alerts, error, onAcknowledge, onSnooze, busy = {} })
   const history = Array.isArray(alerts?.history) ? alerts.history : [];
   const meta = alerts?.meta && typeof alerts.meta === "object" ? alerts.meta : {};
   const lastTelemetryTs = Number(meta.last_telemetry_ts);
-  const offlineAfter = Number(meta.offline_after_min);
+  const offlineAfter = meta.offline_after_min;
+  const offlineAfterDisplay = Number.isFinite(Number(offlineAfter)) && Number(offlineAfter) >= 1
+    ? `${Number(offlineAfter)} min`
+    : "off";
 
   return (
     <div>
@@ -1523,7 +1526,7 @@ function WatchkeeperPanel({ alerts, error, onAcknowledge, onSnooze, busy = {} })
       }}>
         <span>watchkeeper {meta.watchkeeper_enabled === false ? "disabled" : "enabled"}</span>
         <span style={{ color: "#7eabc8" }}>last telemetry {Number.isFinite(lastTelemetryTs) ? fmtAlertTs(lastTelemetryTs) : "-"}</span>
-        <span style={{ color: "#7eabc8" }}>offline threshold {Number.isFinite(offlineAfter) ? `${offlineAfter} min` : "off"}</span>
+        <span style={{ color: "#7eabc8" }}>offline threshold {offlineAfterDisplay}</span>
       </div>
 
       <div style={{ marginBottom: 12 }}>
