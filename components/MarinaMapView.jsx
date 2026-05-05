@@ -1,17 +1,8 @@
 import { useEffect, useState } from "react";
-import { MapContainer, TileLayer, Polygon, Polyline, CircleMarker, Tooltip } from "react-leaflet";
+import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip } from "react-leaflet";
 
 const DEFAULT_LAYOUT = {
   center: [59.5881254, 25.6124356],
-  harborPolygon: [
-    [59.5896254, 25.6109356],
-    [59.5897254, 25.6141356],
-    [59.5892254, 25.6142356],
-    [59.5889254, 25.6135356],
-    [59.5879254, 25.6134356],
-    [59.5877254, 25.6117356],
-    [59.5885254, 25.6111356],
-  ],
   pierLines: [
     [
       [59.5892754, 25.6119856],
@@ -47,6 +38,7 @@ const DEFAULT_LAYOUT = {
     ],
   },
   fuelDock: [59.5884654, 25.6129156],
+  reverseBoatOrder: false,
 };
 
 function keyFor(boat) {
@@ -66,7 +58,6 @@ function shiftLayout(layout, target, dLat, dLon) {
   const shiftArray = (arr) => arr.map((p) => shiftedPoint(p, dLat, dLon));
 
   if (target === "center") next.center = shiftedPoint(next.center, dLat, dLon);
-  if (target === "basin") next.harborPolygon = shiftArray(next.harborPolygon);
   if (target === "piers") next.pierLines = next.pierLines.map((line) => shiftArray(line));
   if (target === "berths-all") {
     for (const k of ["A", "B", "C"]) next.berthPositions[k] = shiftArray(next.berthPositions[k]);
@@ -79,10 +70,36 @@ function shiftLayout(layout, target, dLat, dLon) {
   return next;
 }
 
+function rotatePoint([lat, lon], [aLat, aLon], deg) {
+  const t = (deg * Math.PI) / 180;
+  const dLat = lat - aLat;
+  const dLon = lon - aLon;
+  const rLat = dLat * Math.cos(t) - dLon * Math.sin(t);
+  const rLon = dLat * Math.sin(t) + dLon * Math.cos(t);
+  return [aLat + rLat, aLon + rLon];
+}
+
+function rotateBerthRows(layout, deg) {
+  const next = cloneLayout(layout);
+  const pts = [
+    ...(next.berthPositions?.A || []),
+    ...(next.berthPositions?.B || []),
+    ...(next.berthPositions?.C || []),
+  ];
+  if (!pts.length) return next;
+
+  const anchor = pts[0]; // shore-end anchor by current convention
+  for (const k of ["A", "B", "C"]) {
+    next.berthPositions[k] = (next.berthPositions[k] || []).map((p) => rotatePoint(p, anchor, deg));
+  }
+  return next;
+}
+
 export default function MarinaMapView({ boats, selectedId, queuedBoatIds, onBoatSelect, layout, isSuperAdmin, onSaveLayout }) {
   const [editMode, setEditMode] = useState(false);
   const [target, setTarget] = useState("berths-all");
   const [stepDeg, setStepDeg] = useState(0.00005);
+  const [rotDeg, setRotDeg] = useState(2);
   const [draft, setDraft] = useState(layout || DEFAULT_LAYOUT);
   const [saving, setSaving] = useState(false);
 
@@ -119,18 +136,6 @@ export default function MarinaMapView({ boats, selectedId, queuedBoatIds, onBoat
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        <Polygon
-          positions={active.harborPolygon}
-          pathOptions={{
-            color: "#7ec8e3",
-            weight: 2,
-            fillColor: "#4ea1c4",
-            fillOpacity: 0.16,
-          }}
-        >
-          <Tooltip sticky>Hara sadam basin</Tooltip>
-        </Polygon>
-
         {active.pierLines.map((line, i) => (
           <Polyline
             key={i}
@@ -140,7 +145,7 @@ export default function MarinaMapView({ boats, selectedId, queuedBoatIds, onBoat
         ))}
 
         {(["A", "B", "C"]).flatMap((sectionId) => {
-          const sectionBoats = bySection[sectionId];
+          const sectionBoats = active.reverseBoatOrder ? [...bySection[sectionId]].reverse() : bySection[sectionId];
           return sectionBoats.map((boat, idx) => {
             const pos = active.berthPositions[sectionId][idx];
             if (!pos) return null;
@@ -252,7 +257,6 @@ export default function MarinaMapView({ boats, selectedId, queuedBoatIds, onBoat
                 style={{ width: "100%", marginBottom: 8, background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
               >
                 <option value="center">Map center</option>
-                <option value="basin">Basin polygon</option>
                 <option value="piers">Pier lines</option>
                 <option value="berths-all">All berths</option>
                 <option value="berths-A">Berths A</option>
@@ -260,6 +264,38 @@ export default function MarinaMapView({ boats, selectedId, queuedBoatIds, onBoat
                 <option value="berths-C">Berths C</option>
                 <option value="fuel">Fuel dock</option>
               </select>
+
+              <div style={{ fontSize: 10, marginBottom: 6 }}>Boat order</div>
+              <button
+                onClick={() => setDraft((l) => ({ ...l, reverseBoatOrder: !l.reverseBoatOrder }))}
+                style={{
+                  width: "100%",
+                  marginBottom: 10,
+                  background: active.reverseBoatOrder ? "rgba(240,192,64,0.2)" : "rgba(255,255,255,0.06)",
+                  color: active.reverseBoatOrder ? "#f0c040" : "#dcecf5",
+                  border: "1px solid #36566b",
+                  borderRadius: 4,
+                  cursor: "pointer",
+                  padding: "6px 8px",
+                }}
+              >
+                {active.reverseBoatOrder ? "Reversed (shore-first flipped)" : "Normal"}
+              </button>
+
+              <div style={{ fontSize: 10, marginBottom: 6 }}>Berth row angle</div>
+              <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0.5"
+                  max="45"
+                  value={rotDeg}
+                  onChange={(e) => setRotDeg(Math.max(0.5, Math.min(45, Number(e.target.value) || 2)))}
+                  style={{ flex: 1, background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
+                />
+                <button onClick={() => setDraft((l) => rotateBerthRows(l, -rotDeg))} style={{ cursor: "pointer" }}>-deg</button>
+                <button onClick={() => setDraft((l) => rotateBerthRows(l, rotDeg))} style={{ cursor: "pointer" }}>+deg</button>
+              </div>
 
               <div style={{ fontSize: 10, marginBottom: 6 }}>Step</div>
               <select

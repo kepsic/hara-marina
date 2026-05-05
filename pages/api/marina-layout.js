@@ -7,15 +7,6 @@ const KEY = "hara:marina-layout:v1";
 
 const DEFAULT_LAYOUT = {
   center: [59.5881254, 25.6124356],
-  harborPolygon: [
-    [59.5896254, 25.6109356],
-    [59.5897254, 25.6141356],
-    [59.5892254, 25.6142356],
-    [59.5889254, 25.6135356],
-    [59.5879254, 25.6134356],
-    [59.5877254, 25.6117356],
-    [59.5885254, 25.6111356],
-  ],
   pierLines: [
     [
       [59.5892754, 25.6119856],
@@ -51,6 +42,7 @@ const DEFAULT_LAYOUT = {
     ],
   },
   fuelDock: [59.5884654, 25.6129156],
+  reverseBoatOrder: false,
 };
 
 function isLatLon(pt) {
@@ -84,27 +76,24 @@ function sanitizeLayout(raw) {
 
   const center = isLatLon(src.center) ? clampPt(src.center) : DEFAULT_LAYOUT.center;
 
-  const harborPolygon = Array.isArray(src.harborPolygon)
-    ? src.harborPolygon.filter(isLatLon).map(clampPt)
-    : DEFAULT_LAYOUT.harborPolygon;
-
   const pierLines = Array.isArray(src.pierLines)
     ? src.pierLines.map(cleanLine).filter(Boolean)
     : DEFAULT_LAYOUT.pierLines;
 
   const berthPositions = cleanBerths(src.berthPositions, DEFAULT_LAYOUT.berthPositions);
   const fuelDock = isLatLon(src.fuelDock) ? clampPt(src.fuelDock) : DEFAULT_LAYOUT.fuelDock;
+  const reverseBoatOrder = !!src.reverseBoatOrder;
 
-  if (harborPolygon.length < 3 || pierLines.length === 0) {
+  if (pierLines.length === 0) {
     return DEFAULT_LAYOUT;
   }
 
   return {
     center,
-    harborPolygon,
     pierLines,
     berthPositions,
     fuelDock,
+    reverseBoatOrder,
   };
 }
 
