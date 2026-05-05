@@ -404,6 +404,66 @@ function inferDockStep(layout, dockId) {
   return [-0.00006, 0.00012];
 }
 
+// Unit step (lat,lng delta) of `meters` along a dock's heading axis.
+// Dock heading is the boat-bow direction; the dock LINE itself runs perpendicular
+// to that (heading - 90°), so we use that bearing to step from berth to berth.
+function dockAxisStep(layout, dockId, meters) {
+  const dock = getDocks(layout).find((d) => d.id === dockId);
+  const headingDeg = Number.isFinite(dock?.headingDeg) ? dock.headingDeg : 270;
+  const lineBearing = (((headingDeg - 90) % 360) + 360) % 360;
+  const rad = (lineBearing * Math.PI) / 180;
+  const center = dockCenter(layout, dockId) || DEFAULT_LAYOUT.center;
+  const lat = Number(center?.[0]) || DEFAULT_LAYOUT.center[0];
+  const dLat = (meters * Math.cos(rad)) / 111320;
+  const dLon = (meters * Math.sin(rad)) / (111320 * Math.cos((lat * Math.PI) / 180));
+  return [dLat, dLon];
+}
+
+// Re-position every berth in `dockId` as a clean column (single-sided) or two
+// parallel columns (two-sided), evenly spaced along the dock heading axis.
+// Preserves per-berth metadata (label, occupancy, size limits, side), only
+// rewrites `pos`. Anchored on the current dock center so the dock stays put.
+function arrangeBerthsAlongDock(layout, dockId, { spacingM = 12, sideOffsetM = 7 } = {}) {
+  const next = cloneLayout(layout);
+  const dock = getDocks(next).find((d) => d.id === dockId);
+  if (!dock) return next;
+  const dockBerths = getBerths(next).filter((b) => b.dockId === dockId);
+  if (!dockBerths.length) return next;
+  const isDouble = dock.berthMode === "double";
+  const center = dockCenter(next, dockId);
+  const along = dockAxisStep(next, dockId, spacingM);
+  const alongVec = [along[0], along[1]];
+  // Build a unit-direction vector for perpendicular offset (re-uses
+  // offsetFromVector with `lineVec` = along-dock). offsetFromVector needs
+  // a non-zero vector and returns a perpendicular shift in meters.
+  const primarySrc = isDouble ? dockBerths.filter((b) => b.side !== "secondary") : dockBerths;
+  const secondarySrc = isDouble ? dockBerths.filter((b) => b.side === "secondary") : [];
+  // Number of rows along the dock = max columns count. For mixed counts the
+  // shorter side just leaves trailing rows empty on that side.
+  const rows = Math.max(primarySrc.length, secondarySrc.length, 1);
+  const denom = Math.max(1, rows - 1);
+  const startOffset = -(rows - 1) / 2;
+  const rowPos = Array.from({ length: rows }, (_, idx) => {
+    const k = startOffset + idx;
+    return [center[0] + alongVec[0] * k, center[1] + alongVec[1] * k];
+  });
+  const updates = new Map();
+  primarySrc.forEach((berth, idx) => {
+    const base = rowPos[idx] || rowPos[rowPos.length - 1];
+    const pos = isDouble ? offsetFromVector(base, alongVec, sideOffsetM, -1) : base;
+    updates.set(berth.id, pos);
+  });
+  secondarySrc.forEach((berth, idx) => {
+    const base = rowPos[idx] || rowPos[rowPos.length - 1];
+    const pos = offsetFromVector(base, alongVec, sideOffsetM, 1);
+    updates.set(berth.id, pos);
+  });
+  next.berths = getBerths(next).map((b) => (
+    updates.has(b.id) ? { ...b, pos: updates.get(b.id) } : b
+  ));
+  return next;
+}
+
 function offsetFromVector(point, vector, meters, direction) {
   const len = Math.hypot(vector[0], vector[1]) || 1;
   const normal = [-(vector[1] / len), vector[0] / len];
@@ -440,20 +500,30 @@ function addBerth(layout, dockId) {
   if (!dock) return next;
   const berths = getBerths(next);
   const dockBerths = berths.filter((berth) => berth.dockId === dockId);
-  const step = inferDockStep(next, dockId);
   const mode = dock.berthMode || "single";
   const primary = dockBerths.filter((berth) => berth.side !== "secondary");
   const secondary = dockBerths.filter((berth) => berth.side === "secondary");
-  const side = mode === "double" && secondary.length <= primary.length - 1 ? "secondary" : "primary";
+  // For two-sided docks alternate sides so columns grow evenly. For one-sided,
+  // always primary.
+  const side = mode === "double" && secondary.length < primary.length ? "secondary" : "primary";
+  const along = dockAxisStep(next, dockId, 12);
   let pos;
-  if (side === "secondary" && primary.length) {
-    const anchor = primary[Math.min(secondary.length, primary.length - 1)].pos;
-    pos = offsetFromVector(anchor, step, 7, 1);
-  } else if (dockBerths.length >= 1) {
-    pos = shiftedPoint(dockBerths[dockBerths.length - 1].pos, step[0], step[1]);
+  if (side === "secondary") {
+    // Place this secondary opposite the matching primary (same row index).
+    const rowIdx = secondary.length;
+    const anchor = primary[Math.min(rowIdx, primary.length - 1)]?.pos
+      || dockCenter(next, dockId)
+      || DEFAULT_LAYOUT.center;
+    pos = offsetFromVector(anchor, along, 7, 1);
+  } else if (primary.length) {
+    // Step along the dock axis from the last primary berth.
+    const last = primary[primary.length - 1].pos;
+    pos = [last[0] + along[0], last[1] + along[1]];
+    if (mode === "double") pos = offsetFromVector(pos, along, 7, -1);
   } else {
-    const dockBase = averagePoint(getBerths(next).filter((berth) => berth.dockId === dockId).map((berth) => berth.pos));
-    pos = shiftedPoint(dockBase, step[0], step[1]);
+    // First berth on the dock — anchor at dock center, offset to its side if double.
+    const center = dockCenter(next, dockId) || DEFAULT_LAYOUT.center;
+    pos = mode === "double" ? offsetFromVector(center, along, 7, -1) : center;
   }
   const idx = dockBerths.length + 1;
   next.berths = [
@@ -486,6 +556,18 @@ function updateDockField(layout, dockId, patch) {
     next.berths = getBerths(next).map((berth) => (
       berth.dockId === dockId ? { ...berth, side: "primary" } : berth
     ));
+    return arrangeBerthsAlongDock(next, dockId);
+  }
+  if (patch.berthMode === "double") {
+    // Re-distribute existing berths into two columns (primary on one side,
+    // secondary on the other) so the visual matches the new mode.
+    const dockBerths = getBerths(next).filter((b) => b.dockId === dockId);
+    next.berths = getBerths(next).map((berth) => {
+      if (berth.dockId !== dockId) return berth;
+      const idx = dockBerths.findIndex((b) => b.id === berth.id);
+      return { ...berth, side: idx % 2 === 0 ? "primary" : "secondary" };
+    });
+    return arrangeBerthsAlongDock(next, dockId);
   }
   return next;
 }
@@ -1298,12 +1380,21 @@ export default function MarinaMapView({
                           >
                             {isExpanded ? "▾ Hide berths" : "▸ Show berths"}
                           </button>
-                          <button
-                            onClick={() => setDraft((current) => addBerth(current || active, dock.id))}
-                            style={{ cursor: "pointer", borderRadius: 4, border: "1px solid rgba(126,171,200,0.25)", background: "rgba(255,255,255,0.05)", color: "#dcecf5", padding: "3px 7px", fontSize: 10 }}
-                          >
-                            + Berth
-                          </button>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <button
+                              onClick={() => setDraft((current) => arrangeBerthsAlongDock(current || active, dock.id))}
+                              title={dock.berthMode === "double" ? "Re-snap berths into two parallel columns along the dock heading" : "Re-snap berths into a single column along the dock heading"}
+                              style={{ cursor: "pointer", borderRadius: 4, border: "1px solid rgba(126,171,200,0.25)", background: "rgba(255,255,255,0.05)", color: "#dcecf5", padding: "3px 7px", fontSize: 10 }}
+                            >
+                              Auto-arrange
+                            </button>
+                            <button
+                              onClick={() => setDraft((current) => addBerth(current || active, dock.id))}
+                              style={{ cursor: "pointer", borderRadius: 4, border: "1px solid rgba(126,171,200,0.25)", background: "rgba(255,255,255,0.05)", color: "#dcecf5", padding: "3px 7px", fontSize: 10 }}
+                            >
+                              + Berth
+                            </button>
+                          </div>
                         </div>
 
                         {isExpanded && (
