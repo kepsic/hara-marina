@@ -1,7 +1,9 @@
 import { runWatchkeeperSweep } from "../../../lib/alerts";
 
 function authorized(req) {
-  const expected = process.env.WATCHKEEPER_CRON_TOKEN;
+  // Accept Vercel's native CRON_SECRET (injected automatically by Vercel cron infrastructure)
+  // or a manually configured WATCHKEEPER_CRON_TOKEN for external callers.
+  const expected = process.env.CRON_SECRET || process.env.WATCHKEEPER_CRON_TOKEN;
   if (!expected) return false;
   const header = req.headers.authorization || req.headers["x-watchkeeper-token"] || "";
   const got = String(header).replace(/^Bearer\s+/i, "").trim();
