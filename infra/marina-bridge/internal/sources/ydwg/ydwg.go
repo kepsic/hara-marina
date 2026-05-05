@@ -736,14 +736,7 @@ func handleEnv130310(d []byte, snap *telemetry.Snapshot) {
 	tRaw := uint16(d[2]) | uint16(d[3])<<8
 	if tRaw != 0xFFFF {
 		tC := float64(tRaw)*0.01 - 273.15
-		switch source {
-		case 0:
-			snap.SetWaterTempC(tC)
-		case 1, 2:
-			snap.SetAirTempC(tC)
-		case 4:
-			snap.SetCabinTempC(tC)
-		}
+		setTempBySource(snap, source, tC)
 	}
 	if len(d) >= 8 {
 		pRaw := uint16(d[6]) | uint16(d[7])<<8
@@ -766,16 +759,7 @@ func handleTemp130312(d []byte, snap *telemetry.Snapshot) {
 		return
 	}
 	tC := float64(tRaw)*0.01 - 273.15
-	switch source {
-	case 0:
-		snap.SetWaterTempC(tC)
-	case 1, 2:
-		snap.SetAirTempC(tC)
-	case 4:
-		snap.SetCabinTempC(tC)
-	case 9:
-		snap.SetDewpointC(tC)
-	}
+	setTempBySource(snap, source, tC)
 }
 
 // PGN 130313: Humidity.
@@ -882,18 +866,63 @@ func handlePosition(d []byte, snap *telemetry.Snapshot) {
 }
 
 // PGN 130311: Environmental Parameters
-//   d[0] = SID, d[1] = TempSrc<<6|HumSrc<<4, d[2..3] = temp (0.01 K, uint16 LE),
+//   d[0] = SID,
+//   d[1] = TempSrc (low 6 bits) | HumSrc (high 2 bits),
+//   d[2..3] = temp (0.01 K, uint16 LE),
 //   d[4..5] = humidity (0.004 %, int16 LE)
+//
+// Without source-based dispatch a single broadcaster reporting sea-water on
+// the same PGN clobbers cabin_temp every cycle, which manifested on Vaiana
+// as cabin temperature flipflopping between the Ruuvi cabin reading and
+// the speed-log's water-temp reading.
 func handleEnv(d []byte, snap *telemetry.Snapshot) {
 	if len(d) < 6 {
 		return
 	}
+	tempSrc := d[1] & 0x3F
+	humSrc := (d[1] >> 6) & 0x03
 	tempRaw := uint16(d[2]) | uint16(d[3])<<8
 	if tempRaw != 0xFFFF {
-		snap.SetCabinTempC(float64(tempRaw)*0.01 - 273.15)
+		tC := float64(tempRaw)*0.01 - 273.15
+		setTempBySource(snap, tempSrc, tC)
 	}
 	humRaw := int16(uint16(d[4]) | uint16(d[5])<<8)
 	if humRaw != 0x7FFF {
-		snap.SetCabinHumidityPct(float64(humRaw) * 0.004)
+		rh := float64(humRaw) * 0.004
+		if rh >= 0 && rh <= 100 {
+			// HumSrc: 0=Inside, 1=Outside. Only inside maps to cabin.
+			if humSrc == 0 {
+				snap.SetCabinHumidityPct(rh)
+			}
+		}
+	}
+}
+
+// setTempBySource routes an N2K temperature reading to the correct snapshot
+// field based on the NMEA 2000 "Temperature Source" enumeration shared by
+// PGN 130310/130311/130312:
+//
+//	0  Sea Water       -> water_temp
+//	1  Outside Air     -> air_temp
+//	2  Inside Temp     -> cabin_temp
+//	3  Engine Room     -> ignored
+//	4  Main Cabin      -> cabin_temp
+//	5  Live Well       -> ignored
+//	6  Bait Well       -> ignored
+//	7  Refrigeration   -> ignored
+//	8  Heating System  -> ignored
+//	9  Dew Point       -> dewpoint
+//	10 Apparent Wind Chill / 11 Theoretical Wind Chill / 12 Heat Index /
+//	13 Freezer / 14 Exhaust Gas / 15+ Reserved -> ignored
+func setTempBySource(snap *telemetry.Snapshot, src uint8, tC float64) {
+	switch src {
+	case 0:
+		snap.SetWaterTempC(tC)
+	case 1:
+		snap.SetAirTempC(tC)
+	case 2, 4:
+		snap.SetCabinTempC(tC)
+	case 9:
+		snap.SetDewpointC(tC)
 	}
 }
