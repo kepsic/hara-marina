@@ -1132,14 +1132,53 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
                 )}
                 {isNum(tel?.log_total_nm) && (
                   <div style={{
-                    background:"linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
-                    border:"1px solid rgba(126,171,200,0.18)",
+                    background:"linear-gradient(180deg, #06131e, #0a1c2c)",
+                    border:"1px solid rgba(126,171,200,0.22)",
                     borderRadius:8, padding:"14px 16px",
-                    display:"flex", flexDirection:"column", justifyContent:"center",
+                    display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
+                    gap:8, minHeight:120,
+                    boxShadow:"inset 0 1px 0 rgba(255,255,255,0.04), inset 0 -10px 22px rgba(0,0,0,0.35)",
                   }}>
-                    <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:6}}>Log (MFD)</div>
-                    <div style={{fontFamily:"serif",fontSize:32,fontWeight:"bold",color:"#e8f4f8"}}>
-                      {fmt(tel.log_total_nm, 1)} <span style={{fontSize:12,fontFamily:"monospace",color:"#7eabc8"}}>NM</span>
+                    <div style={{fontSize:9,letterSpacing:3,color:"#7eabc8",textTransform:"uppercase"}}>
+                      Log (MFD)
+                    </div>
+                    <div style={{
+                      position:"relative",
+                      width:"100%", display:"flex", justifyContent:"center", alignItems:"baseline", gap:6,
+                      padding:"6px 10px",
+                      background:"#020a12",
+                      border:"1px solid rgba(126,171,200,0.18)",
+                      borderRadius:4,
+                      boxShadow:"inset 0 2px 6px rgba(0,0,0,0.55)",
+                    }}>
+                      {/* Faux-segment ghost digits behind the value (subtle 8888.8). */}
+                      <span aria-hidden="true" style={{
+                        position:"absolute", inset:0,
+                        display:"flex", justifyContent:"center", alignItems:"baseline", gap:6,
+                        padding:"6px 10px",
+                        fontFamily:"'DSEG7-Classic','Share Tech Mono','Courier New',monospace",
+                        fontSize:38, fontWeight:700, letterSpacing:2,
+                        color:"rgba(240,192,64,0.08)",
+                        pointerEvents:"none",
+                      }}>
+                        8888.8
+                      </span>
+                      <span style={{
+                        fontFamily:"'DSEG7-Classic','Share Tech Mono','Courier New',monospace",
+                        fontSize:38, fontWeight:700, letterSpacing:2,
+                        color:"#f0c040",
+                        textShadow:"0 0 6px rgba(240,192,64,0.45), 0 0 14px rgba(240,192,64,0.18)",
+                        fontVariantNumeric:"tabular-nums",
+                      }}>
+                        {fmt(tel.log_total_nm, 1)}
+                      </span>
+                      <span style={{
+                        fontFamily:"'Share Tech Mono','Courier New',monospace",
+                        fontSize:11, color:"#7eabc8", letterSpacing:2,
+                      }}>NM</span>
+                    </div>
+                    <div style={{fontSize:9,letterSpacing:2,color:"#5a8aaa",textTransform:"uppercase"}}>
+                      total distance
                     </div>
                   </div>
                 )}
