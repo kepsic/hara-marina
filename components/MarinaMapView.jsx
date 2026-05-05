@@ -137,6 +137,9 @@ function orderedBerthSlots(layout) {
         side: berth.side || "primary",
         pos: berth.pos,
         headingDeg: Number.isFinite(berth.headingDeg) ? berth.headingDeg : dock.headingDeg,
+        maxLengthM: Number.isFinite(berth.maxLengthM) ? berth.maxLengthM : (Number.isFinite(dock.defaultMaxLengthM) ? dock.defaultMaxLengthM : null),
+        maxBeamM: Number.isFinite(berth.maxBeamM) ? berth.maxBeamM : (Number.isFinite(dock.defaultMaxBeamM) ? dock.defaultMaxBeamM : null),
+        maxDraftM: Number.isFinite(berth.maxDraftM) ? berth.maxDraftM : (Number.isFinite(dock.defaultMaxDraftM) ? dock.defaultMaxDraftM : null),
       });
     }
   }
@@ -320,37 +323,51 @@ function dockMarkerIcon(label, selected) {
   });
 }
 
-function guestBerthIcon(occupied, headingDeg, zoom) {
+function guestBerthIcon(state, headingDeg, zoom) {
+  // state: 'home-away' | 'guest-occupied' | 'guest-free'
   const scale = boatScaleForZoom(zoom);
   const width = Math.round(72 * scale);
   const height = Math.round(28 * scale);
   const rotationDeg = (((Number(headingDeg) || 270) - 270) % 360 + 360) % 360;
-  if (occupied) {
-    return divIcon({
-      className: "hara-guest-marker",
-      html: `
-        <div style="width:${width}px;height:${height}px;display:flex;align-items:center;justify-content:center;pointer-events:auto;transform:rotate(${rotationDeg}deg);transform-origin:50% 50%;">
-          <svg width="${width}" height="${height}" viewBox="0 0 80 32" fill="none" xmlns="http://www.w3.org/2000/svg" style="overflow:visible;">
-            <g transform="translate(80,0) scale(-1,1)">
-              <path d="M6 16 C6 16 18 4 50 4 L74 10 L76 16 L74 22 L50 28 C18 28 6 16 6 16Z"
-                fill="rgba(160,180,200,0.45)" stroke="rgba(255,255,255,0.7)" stroke-width="1.4" stroke-dasharray="4,3" />
-              <text x="50%" y="55%" text-anchor="middle" font-size="11" font-weight="700" fill="#fff" transform="scale(-1,1) translate(-80,0)">G</text>
-            </g>
-          </svg>
-        </div>
-      `,
-      iconSize: [width, height],
-      iconAnchor: [width / 2, height / 2],
-    });
-  }
+  const styles = {
+    "home-away": {
+      fill: "rgba(160,180,200,0.45)",
+      stroke: "rgba(255,255,255,0.7)",
+      dash: "4,3",
+      label: "",
+      labelColor: "#fff",
+      opacity: 1,
+    },
+    "guest-occupied": {
+      fill: "rgba(80,160,210,0.85)",
+      stroke: "#dcecf5",
+      dash: "",
+      label: "G",
+      labelColor: "#fff",
+      opacity: 1,
+    },
+    "guest-free": {
+      fill: "rgba(120,200,140,0.35)",
+      stroke: "rgba(180,235,200,0.95)",
+      dash: "",
+      label: "✓",
+      labelColor: "#dff5e2",
+      opacity: 1,
+    },
+  };
+  const s = styles[state] || styles["home-away"];
+  const labelSvg = s.label
+    ? `<text x="50%" y="58%" text-anchor="middle" font-size="11" font-weight="700" fill="${s.labelColor}" transform="scale(-1,1) translate(-80,0)">${s.label}</text>`
+    : "";
   return divIcon({
-    className: "hara-empty-marker",
+    className: "hara-guest-marker",
     html: `
-      <div style="width:${width}px;height:${height}px;display:flex;align-items:center;justify-content:center;pointer-events:auto;transform:rotate(${rotationDeg}deg);transform-origin:50% 50%;opacity:0.55;">
+      <div style="width:${width}px;height:${height}px;display:flex;align-items:center;justify-content:center;pointer-events:auto;transform:rotate(${rotationDeg}deg);transform-origin:50% 50%;opacity:${s.opacity};">
         <svg width="${width}" height="${height}" viewBox="0 0 80 32" fill="none" xmlns="http://www.w3.org/2000/svg" style="overflow:visible;">
           <g transform="translate(80,0) scale(-1,1)">
             <path d="M6 16 C6 16 18 4 50 4 L74 10 L76 16 L74 22 L50 28 C18 28 6 16 6 16Z"
-              fill="none" stroke="rgba(200,224,240,0.55)" stroke-width="1.2" stroke-dasharray="3,3" />
+              fill="${s.fill}" stroke="${s.stroke}" stroke-width="1.4" ${s.dash ? `stroke-dasharray="${s.dash}"` : ""} />
+            ${labelSvg}
           </g>
         </svg>
       </div>
@@ -734,17 +751,29 @@ export default function MarinaMapView({
           if (boat) return null;
           const berth = berths.find((b) => b.id === slot.berthId);
           const bookable = slot.dockBookable;
-          // Home-fleet berths (non-bookable) without an assigned boat: show solid
-          // silhouette to indicate the berth belongs to a boat that is currently
-          // away or not telemetry-tracked.
-          // Bookable berths: show solid + G if occupied, dashed outline if free.
-          const occupied = bookable ? berth?.occupied === true : true;
+          const occupied = bookable ? berth?.occupied === true : false;
           const guestLabel = berth?.guestLabel || "";
+          // State drives icon styling:
+          //   home-away      = home-fleet berth, boat is away  (solid grey silhouette)
+          //   guest-occupied = bookable berth currently taken  (filled blue silhouette + G)
+          //   guest-free     = bookable berth free to book     (green-tinted silhouette + ✓)
+          const state = !bookable
+            ? "home-away"
+            : (occupied ? "guest-occupied" : "guest-free");
+          const sizeBits = [];
+          if (Number.isFinite(slot.maxLengthM)) sizeBits.push(`LOA ≤ ${slot.maxLengthM} m`);
+          if (Number.isFinite(slot.maxBeamM)) sizeBits.push(`Beam ≤ ${slot.maxBeamM} m`);
+          if (Number.isFinite(slot.maxDraftM)) sizeBits.push(`Draft ≤ ${slot.maxDraftM} m`);
+          const titleText = !bookable
+            ? "Home berth · boat away"
+            : (occupied
+              ? (guestLabel ? `Guest · ${guestLabel}` : "Guest berth · occupied")
+              : "Guest berth · free to book");
           return (
             <Marker
               key={`empty-${slot.berthId}`}
               position={slot.pos}
-              icon={guestBerthIcon(occupied, slot.headingDeg, zoom)}
+              icon={guestBerthIcon(state, slot.headingDeg, zoom)}
               eventHandlers={{
                 click: () => {
                   if (!bookable) return;
@@ -754,15 +783,16 @@ export default function MarinaMapView({
               }}
             >
               <Tooltip direction="top" offset={[0, -6]}>
-                <div style={{ fontSize: 11, fontWeight: "bold" }}>
-                  {bookable
-                    ? (occupied ? (guestLabel ? `Guest · ${guestLabel}` : "Guest berth · occupied") : "Guest berth · free")
-                    : "Home berth · away"}
-                </div>
+                <div style={{ fontSize: 11, fontWeight: "bold" }}>{titleText}</div>
                 <div style={{ fontSize: 10, opacity: 0.85 }}>
                   Dock {slot.dockName} · {slot.label}
                   {slot.side === "secondary" ? " · far side" : ""}
                 </div>
+                {bookable && sizeBits.length ? (
+                  <div style={{ fontSize: 10, marginTop: 3, color: "#2c5d3a", fontWeight: 600 }}>
+                    {sizeBits.join(" · ")}
+                  </div>
+                ) : null}
                 {bookable && isSuperAdmin && editMode ? (
                   <div style={{ fontSize: 10, marginTop: 4, color: "#1f6fa8", fontWeight: 600 }}>
                     Click → mark {occupied ? "free" : "occupied"}
@@ -1234,6 +1264,33 @@ export default function MarinaMapView({
                           <span>{dockBerths.length} berth{dockBerths.length === 1 ? "" : "s"}</span>
                         </div>
 
+                        {dock.bookable && (
+                          <div style={{ display: "grid", gridTemplateColumns: "auto repeat(3, 1fr)", gap: 4, alignItems: "center", marginBottom: 8, fontSize: 10, color: "#7eabc8" }} title="Default size limits inherited by all berths in this dock unless overridden per-berth.">
+                            <span>Defaults (m):</span>
+                            <input
+                              type="number" min="0" step="0.1"
+                              value={Number.isFinite(dock.defaultMaxLengthM) ? dock.defaultMaxLengthM : ""}
+                              onChange={(e) => setDraft((current) => updateDockField(current || active, dock.id, { defaultMaxLengthM: e.target.value === "" ? null : Number(e.target.value) }))}
+                              placeholder="LOA"
+                              style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4, fontSize: 10, padding: "2px 4px" }}
+                            />
+                            <input
+                              type="number" min="0" step="0.1"
+                              value={Number.isFinite(dock.defaultMaxBeamM) ? dock.defaultMaxBeamM : ""}
+                              onChange={(e) => setDraft((current) => updateDockField(current || active, dock.id, { defaultMaxBeamM: e.target.value === "" ? null : Number(e.target.value) }))}
+                              placeholder="Beam"
+                              style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4, fontSize: 10, padding: "2px 4px" }}
+                            />
+                            <input
+                              type="number" min="0" step="0.1"
+                              value={Number.isFinite(dock.defaultMaxDraftM) ? dock.defaultMaxDraftM : ""}
+                              onChange={(e) => setDraft((current) => updateDockField(current || active, dock.id, { defaultMaxDraftM: e.target.value === "" ? null : Number(e.target.value) }))}
+                              placeholder="Draft"
+                              style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4, fontSize: 10, padding: "2px 4px" }}
+                            />
+                          </div>
+                        )}
+
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                           <button
                             onClick={() => setExpandedDockId(isExpanded ? null : dock.id)}
@@ -1303,6 +1360,32 @@ export default function MarinaMapView({
                                     style={{ background: "#102537", color: dock.bookable && berth.occupied ? "#dcecf5" : "#6a8395", border: "1px solid #36566b", borderRadius: 4, fontSize: 10, padding: "3px 5px" }}
                                   />
                                 </div>
+                                {dock.bookable && (
+                                  <div style={{ display: "grid", gridTemplateColumns: "auto repeat(3, 1fr)", gap: 4, alignItems: "center", paddingLeft: 4, fontSize: 10, color: "#7eabc8" }} title="Per-berth size limits override the dock defaults. Leave blank to inherit.">
+                                    <span>Limits (m):</span>
+                                    <input
+                                      type="number" min="0" step="0.1"
+                                      value={Number.isFinite(berth.maxLengthM) ? berth.maxLengthM : ""}
+                                      onChange={(e) => setDraft((current) => updateBerthField(current || active, berth.id, { maxLengthM: e.target.value === "" ? null : Number(e.target.value) }))}
+                                      placeholder={Number.isFinite(dock.defaultMaxLengthM) ? `LOA ${dock.defaultMaxLengthM}` : "LOA"}
+                                      style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4, fontSize: 10, padding: "2px 4px" }}
+                                    />
+                                    <input
+                                      type="number" min="0" step="0.1"
+                                      value={Number.isFinite(berth.maxBeamM) ? berth.maxBeamM : ""}
+                                      onChange={(e) => setDraft((current) => updateBerthField(current || active, berth.id, { maxBeamM: e.target.value === "" ? null : Number(e.target.value) }))}
+                                      placeholder={Number.isFinite(dock.defaultMaxBeamM) ? `Beam ${dock.defaultMaxBeamM}` : "Beam"}
+                                      style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4, fontSize: 10, padding: "2px 4px" }}
+                                    />
+                                    <input
+                                      type="number" min="0" step="0.1"
+                                      value={Number.isFinite(berth.maxDraftM) ? berth.maxDraftM : ""}
+                                      onChange={(e) => setDraft((current) => updateBerthField(current || active, berth.id, { maxDraftM: e.target.value === "" ? null : Number(e.target.value) }))}
+                                      placeholder={Number.isFinite(dock.defaultMaxDraftM) ? `Draft ${dock.defaultMaxDraftM}` : "Draft"}
+                                      style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4, fontSize: 10, padding: "2px 4px" }}
+                                    />
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>

@@ -151,6 +151,9 @@ function cleanDocks(raw, fallback) {
       enabled: entry?.enabled !== false,
       bookable: entry?.bookable === true,
       headingDeg: normalizeDeg(entry?.headingDeg, 270),
+      defaultMaxLengthM: Number.isFinite(Number(entry?.defaultMaxLengthM)) && Number(entry?.defaultMaxLengthM) > 0 ? Math.round(Number(entry?.defaultMaxLengthM) * 100) / 100 : null,
+      defaultMaxBeamM: Number.isFinite(Number(entry?.defaultMaxBeamM)) && Number(entry?.defaultMaxBeamM) > 0 ? Math.round(Number(entry?.defaultMaxBeamM) * 100) / 100 : null,
+      defaultMaxDraftM: Number.isFinite(Number(entry?.defaultMaxDraftM)) && Number(entry?.defaultMaxDraftM) > 0 ? Math.round(Number(entry?.defaultMaxDraftM) * 100) / 100 : null,
     });
   }
   return out.length ? out : clone(fallback);
@@ -170,6 +173,10 @@ function cleanBerths(raw, fallback, dockIds) {
     const headingDeg = entry?.headingDeg === null || entry?.headingDeg === "" || entry?.headingDeg === undefined
       ? null
       : normalizeDeg(entry?.headingDeg, 270);
+    const numOrNull = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null;
+    };
     out.push({
       id,
       dockId,
@@ -178,6 +185,9 @@ function cleanBerths(raw, fallback, dockIds) {
       enabled: entry?.enabled !== false,
       pos: clampPt(entry.pos),
       headingDeg,
+      maxLengthM: numOrNull(entry?.maxLengthM),
+      maxBeamM: numOrNull(entry?.maxBeamM),
+      maxDraftM: numOrNull(entry?.maxDraftM),
       occupied: entry?.occupied === true,
       guestLabel: typeof entry?.guestLabel === "string" ? entry.guestLabel.trim().slice(0, 32) : "",
     });
