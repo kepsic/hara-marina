@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import Head from "next/head";
 import Link from "next/link";
 import WindCanvas from "../components/WindCanvas";
+import BoatWindRose from "../components/BoatWindRose";
 
 const DOCK_SECTIONS = [
   { id: "A", boats: [1, 2, 3] },
@@ -535,6 +536,7 @@ export default function HaraMarina() {
     const t = telemetry;
     const tile = (label, value, unit, color = "#e8f4f8") => {
       const blank = value === null || value === undefined || value === "";
+      if (blank) return null;
       return (
         <div style={{
           flex:"1 1 calc(50% - 6px)",minWidth:0,
@@ -543,8 +545,8 @@ export default function HaraMarina() {
         }}>
           <div style={{fontSize:8,letterSpacing:1.5,color:"#7eabc8",textTransform:"uppercase",marginBottom:2}}>{label}</div>
           <div style={{fontSize:14,fontWeight:"bold",color}}>
-            {blank ? <em style={{color:"#3a5a6a"}}>—</em> : value}
-            {!blank && unit && <span style={{fontSize:9,color:"#5a8aaa",marginLeft:3,fontWeight:"normal"}}>{unit}</span>}
+            {value}
+            {unit && <span style={{fontSize:9,color:"#5a8aaa",marginLeft:3,fontWeight:"normal"}}>{unit}</span>}
           </div>
         </div>
       );
@@ -566,6 +568,17 @@ export default function HaraMarina() {
     const heel = num(t.heel_deg, 1);
     const lat = typeof t.position?.lat === "number" ? t.position.lat : null;
     const lon = typeof t.position?.lon === "number" ? t.position.lon : null;
+    const wind = t.wind || {};
+    const windTrueDir = typeof wind?.true?.direction_deg === "number" ? wind.true.direction_deg : null;
+    const windTrueKn = typeof wind?.true?.speed_kn === "number" ? wind.true.speed_kn : null;
+    const windAppAngle = typeof wind?.apparent?.angle_deg === "number" ? wind.apparent.angle_deg : null;
+    const windAppKn = typeof wind?.apparent?.speed_kn === "number" ? wind.apparent.speed_kn : null;
+    const headingDeg = typeof t.heading_deg === "number" ? t.heading_deg : null;
+    const cogDeg = typeof t.cog_deg === "number" ? t.cog_deg : null;
+    const hasWindTelemetry = windTrueDir !== null || windAppAngle !== null;
+    const hasPosition = lat !== null && lon !== null;
+    const hasAnyTiles = [battV, battPct, shore, bilgeCm, bilgeCyc, cabinT, cabinH, heel]
+      .some((v) => v !== null && v !== undefined && v !== "");
     return (
       <div>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
@@ -587,24 +600,42 @@ export default function HaraMarina() {
           {tile("Humidity", cabinH, "%")}
           {tile("Heel", heel, "°", heel !== null && Math.abs(parseFloat(heel)) > 3 ? "#e08040" : "#9ec8e0")}
         </div>
-        <div style={{marginTop:10,padding:"8px 10px",background:"rgba(255,255,255,0.03)",
-          border:"1px solid rgba(126,171,200,0.1)",borderRadius:5}}>
-          <div style={{fontSize:8,letterSpacing:1.5,color:"#7eabc8",textTransform:"uppercase",marginBottom:3}}>Position</div>
-          {lat !== null && lon !== null ? (
-            <>
-              <div style={{fontFamily:"monospace",fontSize:11,color:"#e8f4f8"}}>
-                {lat.toFixed(5)}°N, {lon.toFixed(5)}°E
-              </div>
-              <a href={`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=17/${lat}/${lon}`}
-                 target="_blank" rel="noreferrer"
-                 style={{fontSize:9,color:"#6ab0e8",letterSpacing:1,textDecoration:"none"}}>
-                Open in map ↗
-              </a>
-            </>
-          ) : (
-            <div style={{fontFamily:"monospace",fontSize:11,color:"#3a5a6a"}}>—</div>
-          )}
-        </div>
+        {hasWindTelemetry && (
+          <div style={{
+            marginTop:10,padding:"8px 10px",background:"rgba(255,255,255,0.03)",
+            border:"1px solid rgba(126,171,200,0.1)",borderRadius:5,
+            display:"flex",justifyContent:"center",
+          }}>
+            <BoatWindRose
+              size={220}
+              trueDirDeg={windTrueDir}
+              trueSpeedKn={windTrueKn}
+              apparentAngle={windAppAngle}
+              apparentSpeedKn={windAppKn}
+              headingDeg={headingDeg}
+              cogDeg={cogDeg}
+            />
+          </div>
+        )}
+        {!hasAnyTiles && !hasPosition && (
+          <div style={{marginTop:8,fontSize:11,color:"#5a8aaa"}}>
+            No telemetry fields available yet.
+          </div>
+        )}
+        {hasPosition && (
+          <div style={{marginTop:10,padding:"8px 10px",background:"rgba(255,255,255,0.03)",
+            border:"1px solid rgba(126,171,200,0.1)",borderRadius:5}}>
+            <div style={{fontSize:8,letterSpacing:1.5,color:"#7eabc8",textTransform:"uppercase",marginBottom:3}}>Position</div>
+            <div style={{fontFamily:"monospace",fontSize:11,color:"#e8f4f8"}}>
+              {lat.toFixed(5)}°N, {lon.toFixed(5)}°E
+            </div>
+            <a href={`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=17/${lat}/${lon}`}
+               target="_blank" rel="noreferrer"
+               style={{fontSize:9,color:"#6ab0e8",letterSpacing:1,textDecoration:"none"}}>
+              Open in map ↗
+            </a>
+          </div>
+        )}
       </div>
     );
   }
