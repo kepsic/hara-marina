@@ -33,6 +33,7 @@ export default function BookingsAdminPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [selected, setSelected] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   // Auth gate
   useEffect(() => {
@@ -112,6 +113,7 @@ export default function BookingsAdminPage() {
           </select>
         </label>
         <button onClick={refresh} style={{ background: "#1f6fa8", color: "#fff", border: "none", padding: "6px 12px", borderRadius: 4, cursor: "pointer", fontSize: 13 }}>Refresh</button>
+        <button onClick={() => setShowSettings(true)} style={{ background: "#36566b", color: "#fff", border: "none", padding: "6px 12px", borderRadius: 4, cursor: "pointer", fontSize: 13 }}>⚙ Pricing</button>
         <div style={{ fontSize: 11, color: "#7eabc8" }}>{loading ? "Loading…" : `${bookings.length} booking${bookings.length === 1 ? "" : "s"}`}</div>
       </div>
 
@@ -198,6 +200,163 @@ export default function BookingsAdminPage() {
           </div>
         </div>
       )}
+
+      {showSettings && <PricingSettingsModal onClose={() => setShowSettings(false)} />}
+    </div>
+  );
+}
+
+function PricingSettingsModal({ onClose }) {
+  const [cfg, setCfg] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    fetch("/api/bookings/pricing")
+      .then((r) => r.json())
+      .then((j) => setCfg(j.pricing || null))
+      .catch(() => setErr("Failed to load pricing"));
+  }, []);
+
+  function update(patch) { setCfg((c) => ({ ...c, ...patch })); }
+
+  async function save() {
+    setBusy(true); setErr(null);
+    try {
+      const r = await fetch("/api/bookings/pricing", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cfg),
+      });
+      const j = await r.json();
+      if (!r.ok) { setErr(j.error || "save failed"); return; }
+      setCfg(j.pricing);
+      onClose();
+    } finally { setBusy(false); }
+  }
+
+  function addSeasonal() {
+    update({ seasonal: [...(cfg.seasonal || []), { from: "", to: "", multiplier: 1.5 }] });
+  }
+  function updSeasonal(i, patch) {
+    const next = [...(cfg.seasonal || [])];
+    next[i] = { ...next[i], ...patch };
+    update({ seasonal: next });
+  }
+  function rmSeasonal(i) {
+    const next = (cfg.seasonal || []).filter((_, j) => j !== i);
+    update({ seasonal: next });
+  }
+
+  function addOverride(kind) {
+    const key = window.prompt(kind === "perDockOverrides" ? "Dock ID (e.g. D)" : "Berth ID (e.g. D-9)");
+    if (!key) return;
+    const cents = Number(window.prompt("Nightly rate in cents (e.g. 5000 for €50)", "5000"));
+    if (!Number.isFinite(cents) || cents < 0) return;
+    update({ [kind]: { ...(cfg[kind] || {}), [key]: cents } });
+  }
+  function rmOverride(kind, key) {
+    const next = { ...(cfg[kind] || {}) };
+    delete next[key];
+    update({ [kind]: next });
+  }
+
+  const inp = { background: "#102537", color: "#dcecf5", border: "1px solid #36566b", padding: "6px 8px", borderRadius: 4, fontSize: 13 };
+  const lbl = { display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "#7eabc8" };
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#0c1d2c", borderRadius: 8, padding: 24, width: "100%", maxWidth: 560, maxHeight: "90vh", overflowY: "auto", color: "#dcecf5", boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <h2 style={{ margin: 0, fontSize: 18 }}>Booking pricing</h2>
+          <button onClick={onClose} style={{ background: "transparent", color: "#7eabc8", border: "none", fontSize: 22, cursor: "pointer" }}>×</button>
+        </div>
+
+        {!cfg && !err && <div>Loading…</div>}
+        {err && <div style={{ color: "#e8b090", marginBottom: 12 }}>{err}</div>}
+
+        {cfg && (
+          <div style={{ display: "grid", gap: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <label style={lbl}>
+                Currency (ISO 3-letter)
+                <input style={inp} value={cfg.currency} onChange={(e) => update({ currency: e.target.value.toUpperCase() })} maxLength={3} />
+              </label>
+              <label style={lbl}>
+                Default nightly rate (cents)
+                <input type="number" style={inp} value={cfg.defaultNightCents} onChange={(e) => update({ defaultNightCents: Number(e.target.value) })} />
+                <span style={{ fontSize: 11, color: "#5a7e96" }}>{(cfg.defaultNightCents / 100).toFixed(2)} {cfg.currency} / night</span>
+              </label>
+            </div>
+
+            <fieldset style={{ border: "1px solid #1c3346", borderRadius: 6, padding: 12 }}>
+              <legend style={{ fontSize: 12, color: "#7eabc8", padding: "0 6px" }}>SaaS platform fee (deducted from each booking)</legend>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <label style={lbl}>
+                  Percent
+                  <input type="number" step="0.1" style={inp} value={cfg.platformFeePercent} onChange={(e) => update({ platformFeePercent: Number(e.target.value) })} />
+                </label>
+                <label style={lbl}>
+                  Fixed (cents)
+                  <input type="number" style={inp} value={cfg.platformFeeFixedCents} onChange={(e) => update({ platformFeeFixedCents: Number(e.target.value) })} />
+                </label>
+              </div>
+              <div style={{ fontSize: 11, color: "#5a7e96", marginTop: 6 }}>
+                Example €100 booking → platform fee: {((100 * cfg.platformFeePercent / 100) + cfg.platformFeeFixedCents / 100).toFixed(2)} {cfg.currency}, marina receives {(100 - (100 * cfg.platformFeePercent / 100) - cfg.platformFeeFixedCents / 100).toFixed(2)} {cfg.currency}.
+              </div>
+            </fieldset>
+
+            <fieldset style={{ border: "1px solid #1c3346", borderRadius: 6, padding: 12 }}>
+              <legend style={{ fontSize: 12, color: "#7eabc8", padding: "0 6px" }}>Per-dock overrides</legend>
+              {Object.entries(cfg.perDockOverrides || {}).length === 0 && <div style={{ fontSize: 12, color: "#5a7e96" }}>None — using default rate.</div>}
+              {Object.entries(cfg.perDockOverrides || {}).map(([k, v]) => (
+                <div key={k} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                  <code style={{ flex: 1, fontSize: 13 }}>{k}</code>
+                  <input type="number" style={{ ...inp, width: 100 }} value={v} onChange={(e) => update({ perDockOverrides: { ...cfg.perDockOverrides, [k]: Number(e.target.value) } })} />
+                  <span style={{ fontSize: 11, color: "#5a7e96" }}>cents/night</span>
+                  <button onClick={() => rmOverride("perDockOverrides", k)} style={{ background: "transparent", color: "#c25c4a", border: "none", cursor: "pointer", fontSize: 16 }}>×</button>
+                </div>
+              ))}
+              <button onClick={() => addOverride("perDockOverrides")} style={{ background: "#1f6fa8", color: "#fff", border: "none", padding: "4px 10px", borderRadius: 4, cursor: "pointer", fontSize: 12, marginTop: 4 }}>+ Dock override</button>
+            </fieldset>
+
+            <fieldset style={{ border: "1px solid #1c3346", borderRadius: 6, padding: 12 }}>
+              <legend style={{ fontSize: 12, color: "#7eabc8", padding: "0 6px" }}>Per-berth overrides</legend>
+              {Object.entries(cfg.perBerthOverrides || {}).length === 0 && <div style={{ fontSize: 12, color: "#5a7e96" }}>None.</div>}
+              {Object.entries(cfg.perBerthOverrides || {}).map(([k, v]) => (
+                <div key={k} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                  <code style={{ flex: 1, fontSize: 13 }}>{k}</code>
+                  <input type="number" style={{ ...inp, width: 100 }} value={v} onChange={(e) => update({ perBerthOverrides: { ...cfg.perBerthOverrides, [k]: Number(e.target.value) } })} />
+                  <span style={{ fontSize: 11, color: "#5a7e96" }}>cents/night</span>
+                  <button onClick={() => rmOverride("perBerthOverrides", k)} style={{ background: "transparent", color: "#c25c4a", border: "none", cursor: "pointer", fontSize: 16 }}>×</button>
+                </div>
+              ))}
+              <button onClick={() => addOverride("perBerthOverrides")} style={{ background: "#1f6fa8", color: "#fff", border: "none", padding: "4px 10px", borderRadius: 4, cursor: "pointer", fontSize: 12, marginTop: 4 }}>+ Berth override</button>
+            </fieldset>
+
+            <fieldset style={{ border: "1px solid #1c3346", borderRadius: 6, padding: 12 }}>
+              <legend style={{ fontSize: 12, color: "#7eabc8", padding: "0 6px" }}>Seasonal multipliers</legend>
+              {(cfg.seasonal || []).length === 0 && <div style={{ fontSize: 12, color: "#5a7e96" }}>No seasonal rules — flat rate year-round.</div>}
+              {(cfg.seasonal || []).map((r, i) => (
+                <div key={i} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
+                  <input type="date" style={inp} value={r.from} onChange={(e) => updSeasonal(i, { from: e.target.value })} />
+                  <span>→</span>
+                  <input type="date" style={inp} value={r.to} onChange={(e) => updSeasonal(i, { to: e.target.value })} />
+                  <input type="number" step="0.05" style={{ ...inp, width: 70 }} value={r.multiplier} onChange={(e) => updSeasonal(i, { multiplier: Number(e.target.value) })} />
+                  <span style={{ fontSize: 11, color: "#5a7e96" }}>×</span>
+                  <button onClick={() => rmSeasonal(i)} style={{ background: "transparent", color: "#c25c4a", border: "none", cursor: "pointer", fontSize: 16 }}>×</button>
+                </div>
+              ))}
+              <button onClick={addSeasonal} style={{ background: "#1f6fa8", color: "#fff", border: "none", padding: "4px 10px", borderRadius: 4, cursor: "pointer", fontSize: 12, marginTop: 4 }}>+ Season</button>
+            </fieldset>
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+              <button onClick={onClose} style={{ background: "#36566b", color: "#fff", border: "none", padding: "8px 16px", borderRadius: 4, cursor: "pointer" }}>Cancel</button>
+              <button disabled={busy} onClick={save} style={{ background: "#3aa86b", color: "#fff", border: "none", padding: "8px 16px", borderRadius: 4, cursor: busy ? "wait" : "pointer" }}>{busy ? "Saving…" : "Save"}</button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
