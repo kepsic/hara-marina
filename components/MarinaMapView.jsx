@@ -665,6 +665,7 @@ export default function MarinaMapView({
   onBoatSelect,
   layout,
   isSuperAdmin,
+  anonymous,
   onSaveLayout,
   weather,
   marinaConditions,
@@ -950,13 +951,18 @@ export default function MarinaMapView({
           const inQueue = queuedBoatIds.has(boat.id);
           const slug = boatSlug(boat.name);
           const badge = boatBadges?.[slug] || null;
+          // Anonymous visitors see neutral silhouettes — no boat colour, no
+          // identifying tooltip, no click-through to the boat portal. Owners
+          // and signed-in viewers see the full coloured marker as before.
+          const markerColor = anonymous ? "#3b4a5a" : boat.color;
           return (
             <Marker
               key={`${keyFor(boat)}-${slot.berthId}`}
               position={slot.pos}
-              icon={boatMarkerIcon(boat.color, isSelected, boatHeadingDeg(active, boat, slot), zoom)}
+              icon={boatMarkerIcon(markerColor, isSelected && !anonymous, boatHeadingDeg(active, boat, slot), zoom)}
               eventHandlers={{
                 click: () => {
+                  if (anonymous) return;
                   if (isSuperAdmin && editMode) {
                     onBoatSelect(boat.id);
                     return;
@@ -968,6 +974,14 @@ export default function MarinaMapView({
                 },
               }}
             >
+              {anonymous ? (
+                <Tooltip direction="top" offset={[0, -6]}>
+                  <div style={{ fontSize: 11, opacity: 0.85 }}>Resident vessel</div>
+                  <div style={{ fontSize: 10, marginTop: 2, color: "#345268" }}>
+                    Sign in to see boat details.
+                  </div>
+                </Tooltip>
+              ) : (
               <Tooltip direction="top" offset={[0, -6]}>
                 <div style={{ fontSize: 11, fontWeight: "bold", letterSpacing: 0.5 }}>
                   {boat.name}
@@ -990,6 +1004,7 @@ export default function MarinaMapView({
                   Click → open boat portal
                 </div>
               </Tooltip>
+              )}
             </Marker>
           );
         })}

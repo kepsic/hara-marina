@@ -1356,6 +1356,7 @@ export default function HaraMarina() {
               onBoatSelect={handleBoatTap}
               layout={marinaLayout}
               isSuperAdmin={isSuperAdmin}
+              anonymous={authed === false}
               onSaveLayout={saveMarinaLayout}
               weather={weather}
               marinaConditions={marinaConditions}
