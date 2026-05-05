@@ -1,15 +1,29 @@
-import { verifySession, SESSION_COOKIE_NAME } from "../../../../lib/auth";
+import { verifySession, SESSION_COOKIE_NAME, verifyBoatShareSession, BOAT_SHARE_COOKIE_NAME } from "../../../../lib/auth";
 import { canViewBoat, norm } from "../../../../lib/owners";
+import { isShareIdActive } from "../../../../lib/boatAccess";
 import { getAlertSnapshot } from "../../../../lib/alerts";
 
 export default async function handler(req, res) {
   const slug = norm(String(req.query.slug || ""));
   if (!slug) return res.status(400).json({ error: "slug required" });
 
+  // Owner sign-in OR active boat-share session may read alerts (read-only).
+  // Read-only access is needed by the VesselSafetyHero card shown to viewers
+  // who hold a temporary PIN. Mutations live on /ack and /snooze and remain
+  // owner-only.
+  let authorized = false;
   const session = await verifySession(req.cookies?.[SESSION_COOKIE_NAME]);
-  if (!session?.email || !canViewBoat(session.email, slug)) {
-    return res.status(401).json({ error: "owner sign-in required" });
+  if (session?.email && canViewBoat(session.email, slug)) {
+    authorized = true;
+  } else {
+    const share = await verifyBoatShareSession(req.cookies?.[BOAT_SHARE_COOKIE_NAME]);
+    if (share && norm(share.slug) === slug) {
+      if (!share.shareId || (await isShareIdActive(slug, share.shareId))) {
+        authorized = true;
+      }
+    }
   }
+  if (!authorized) return res.status(401).json({ error: "auth required" });
 
   res.setHeader("Cache-Control", "no-store");
 

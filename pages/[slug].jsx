@@ -19,6 +19,7 @@ import WaterDepthBar from "../components/WaterDepthBar";
 import SettingsModal from "../components/SettingsModal";
 import ShareModal from "../components/ShareModal";
 import TelemetryHistoryChart from "../components/TelemetryHistoryChart";
+import VesselSafetyHero from "../components/VesselSafetyHero";
 
 const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
@@ -302,7 +303,10 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
   }, [accessKind, slug]);
 
   useEffect(() => {
-    if (accessKind !== "owner") return;
+    // Load watchkeeper alerts for both owner and shared viewers so the
+    // VesselSafetyHero card can display active alarms. Mutation buttons
+    // (ack/snooze) inside WatchkeeperPanel are gated separately to owners.
+    if (accessKind === "pin-locked") return;
     let alive = true;
     async function loadAlerts() {
       if (!alive) return;
@@ -677,6 +681,15 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
             </div>
           </div>
         </div>
+
+        {/* Vessel safety hero — visible to owners and PIN viewers */}
+        <VesselSafetyHero
+          slug={slug}
+          isOwnerView={isOwnerView}
+          tel={tel}
+          ais={ais}
+          alerts={alerts}
+        />
 
         {/* Tab bar */}
         <div style={{
