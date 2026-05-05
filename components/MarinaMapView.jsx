@@ -241,7 +241,7 @@ export default function MarinaMapView({
         center={active.center}
         zoom={17}
         minZoom={14}
-        maxZoom={20}
+        maxZoom={19}
         style={{ height: "100%", width: "100%", position: "relative", zIndex: 0 }}
         scrollWheelZoom
       >
@@ -249,6 +249,8 @@ export default function MarinaMapView({
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          maxNativeZoom={19}
+          maxZoom={19}
         />
 
         {berthSlots.map((slot, idx) => {
