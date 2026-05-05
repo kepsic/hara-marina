@@ -208,6 +208,7 @@ export default function MarinaMapView({
   const [draft, setDraft] = useState(layout || DEFAULT_LAYOUT);
   const [saving, setSaving] = useState(false);
   const [windOpen, setWindOpen] = useState(true);
+  const [showWindCanvas, setShowWindCanvas] = useState(true);
   const [zoom, setZoom] = useState(17);
 
   useEffect(() => {
@@ -276,13 +277,16 @@ export default function MarinaMapView({
         })}
       </MapContainer>
 
-      <WindCanvas
-        dir={windDirDeg}
-        speed={windMs}
-        gust={hasBoatWind ? null : weather?.windspeedmax}
-        orientation="map"
-        zIndex={300}
-      />
+      {showWindCanvas && (
+        <WindCanvas
+          dir={windDirDeg}
+          speed={windMs}
+          gust={hasBoatWind ? null : weather?.windspeedmax}
+          orientation="map"
+          zIndex={300}
+          opacity={0.32}
+        />
+      )}
 
       <div
         style={{
@@ -341,6 +345,25 @@ export default function MarinaMapView({
 
         {windOpen && (
           <div style={{ borderTop: "1px solid rgba(126,171,200,0.15)", padding: "8px 10px 10px" }}>
+            <button
+              onClick={() => setShowWindCanvas((value) => !value)}
+              style={{
+                width: "100%",
+                marginBottom: 10,
+                background: showWindCanvas ? "rgba(126,171,200,0.16)" : "rgba(255,255,255,0.05)",
+                color: showWindCanvas ? "#dcecf5" : "#7eabc8",
+                border: "1px solid rgba(126,171,200,0.28)",
+                borderRadius: 5,
+                padding: "6px 8px",
+                cursor: "pointer",
+                fontSize: 10,
+                letterSpacing: 0.7,
+                textTransform: "uppercase",
+              }}
+            >
+              Windy overlay: {showWindCanvas ? "On" : "Off"}
+            </button>
+
             {typeof windDirDeg === "number" && typeof windKn === "number" ? (
               <>
                 <BoatWindRose
