@@ -996,7 +996,7 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
         {/* ---- Telemetry tab ---- */}
         {activeTab === "telemetry" && (<>
         <Section title="📈 History">
-          <TelemetryHistoryChart slug={slug} defaultRange="24h" defaultGroup="power" />
+          <TelemetryHistoryChart slug={slug} defaultRange="24h" defaultGroup="power" scenarios={scenarios} />
         </Section>
 
 

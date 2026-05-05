@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import BoatWindRose from "./BoatWindRose";
 import WindRoseHistory from "./WindRoseHistory";
+import { scenarioColumn } from "../lib/scenarioFields";
 
 /**
  * Interactive telemetry history charts with range + metric-group filters.
@@ -98,7 +99,7 @@ function niceTicks(min, max, count = 4) {
   return out;
 }
 
-function Chart({ rows, metric, hoverTs, setHoverTs }) {
+function Chart({ rows, metric, hoverTs, setHoverTs, scenarios = [] }) {
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
   const [size, setSize] = useState({ w: 600, h: 140 });
@@ -121,6 +122,13 @@ function Chart({ rows, metric, hoverTs, setHoverTs }) {
   const pts = useMemo(() => rows
     .map((r) => ({ ts: new Date(r.ts).getTime(), v: r[metric.key] }))
     .filter((p) => isNum(p.v) && isNum(p.ts)), [rows, metric.key]);
+
+  // Scenarios that bind to this metric — drawn as threshold + shaded
+  // regions where the rule's condition was satisfied.
+  const matchingScenarios = useMemo(
+    () => (scenarios || []).filter((s) => s && s.enabled !== false && scenarioColumn(s.field) === metric.key),
+    [scenarios, metric.key],
+  );
 
   const stats = useMemo(() => {
     if (!pts.length) return null;
@@ -155,6 +163,14 @@ function Chart({ rows, metric, hoverTs, setHoverTs }) {
     const tSpan = Math.max(t1 - t0, 1);
     let vMin = Infinity, vMax = -Infinity;
     for (const p of pts) { if (p.v < vMin) vMin = p.v; if (p.v > vMax) vMax = p.v; }
+    // Expand range so scenario thresholds are always visible.
+    for (const s of matchingScenarios) {
+      const t = Number(s.threshold);
+      if (Number.isFinite(t)) {
+        if (t < vMin) vMin = t;
+        if (t > vMax) vMax = t;
+      }
+    }
     if (vMin === vMax) { vMin -= 1; vMax += 1; }
     const vPad = (vMax - vMin) * 0.08;
     vMin -= vPad; vMax += vPad;
@@ -207,6 +223,60 @@ function Chart({ rows, metric, hoverTs, setHoverTs }) {
     ctx.lineWidth = 1.6;
     ctx.stroke();
 
+    // Scenario threshold lines + active-region shading.
+    // For each scenario bound to this metric, draw a dashed horizontal line
+    // at the threshold and shade the time intervals during which the rule's
+    // condition was satisfied. Hysteresis isn't simulated here — we just
+    // highlight raw threshold crossings, which is what the user is reasoning
+    // about when designing rules.
+    if (matchingScenarios.length) {
+      const scenColor = "#ffd166";
+      ctx.font = "10px sans-serif";
+      ctx.textBaseline = "bottom";
+      ctx.textAlign = "left";
+      for (const s of matchingScenarios) {
+        const thr = Number(s.threshold);
+        if (!Number.isFinite(thr)) continue;
+        const cond = s.condition === "lt" ? "lt" : "gt";
+
+        // Shade matching intervals.
+        ctx.fillStyle = "rgba(255,209,102,0.10)";
+        let inRun = false;
+        let runStartX = 0;
+        for (let i = 0; i < pts.length; i++) {
+          const p = pts[i];
+          const matched = cond === "gt" ? p.v > thr : p.v < thr;
+          const px = x(p.ts);
+          if (matched && !inRun) { inRun = true; runStartX = px; }
+          else if (!matched && inRun) {
+            ctx.fillRect(runStartX, padT, Math.max(1, px - runStartX), h - padT - padB);
+            inRun = false;
+          }
+        }
+        if (inRun) {
+          const lastX = x(pts[pts.length - 1].ts);
+          ctx.fillRect(runStartX, padT, Math.max(1, lastX - runStartX), h - padT - padB);
+        }
+
+        // Threshold line.
+        const yy = y(thr);
+        ctx.strokeStyle = scenColor;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.moveTo(padL, yy);
+        ctx.lineTo(w - padR, yy);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Label, clamped to visible band.
+        const labelText = `${s.name || "scenario"} · ${cond === "gt" ? ">" : "<"} ${thr}${metric.unit ? " " + metric.unit : ""}`;
+        const labelY = Math.max(padT + 10, Math.min(h - padB - 2, yy - 2));
+        ctx.fillStyle = scenColor;
+        ctx.fillText(labelText, padL + 4, labelY);
+      }
+    }
+
     // Hover crosshair + dot.
     if (isNum(hoverTs) && hoverTs >= t0 && hoverTs <= t1) {
       // Find nearest point.
@@ -232,7 +302,7 @@ function Chart({ rows, metric, hoverTs, setHoverTs }) {
       ctx.lineWidth = 1.2;
       ctx.stroke();
     }
-  }, [pts, size, metric, hoverTs]);
+  }, [pts, size, metric, hoverTs, matchingScenarios]);
 
   // Hover handler — translate mouse x to ts in shared scale.
   const onMove = (e) => {
@@ -419,7 +489,7 @@ function WindHistoryRose({ rows, loading, err, rangeLabel }) {
   );
 }
 
-export default function TelemetryHistoryChart({ slug, defaultRange = "24h", defaultGroup = "power" }) {
+export default function TelemetryHistoryChart({ slug, defaultRange = "24h", defaultGroup = "power", scenarios = [] }) {
   const [rangeKey, setRangeKey] = useState(defaultRange);
   const [groupKey, setGroupKey] = useState(defaultGroup);
   const [rows, setRows] = useState([]);
@@ -533,7 +603,7 @@ export default function TelemetryHistoryChart({ slug, defaultRange = "24h", defa
           gap: 12,
         }}>
           {present.map((m) => (
-            <Chart key={m.key} rows={rows} metric={m} hoverTs={hoverTs} setHoverTs={setHoverTs} />
+            <Chart key={m.key} rows={rows} metric={m} hoverTs={hoverTs} setHoverTs={setHoverTs} scenarios={scenarios} />
           ))}
         </div>
       )}
