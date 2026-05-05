@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { EQUIPMENT_OPTIONS } from "../lib/boatSettings";
+import { EQUIPMENT_OPTIONS } from "../lib/constants";
 
 const FIELD_STYLE = {
   width: "100%", padding: "8px 10px", fontSize: 13,
