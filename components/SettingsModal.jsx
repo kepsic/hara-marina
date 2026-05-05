@@ -134,7 +134,8 @@ export default function SettingsModal({
       {tab === "alarms" && (
         <div>
           <div style={{ fontSize: 11, color: "#7eabc8", marginBottom: 14, lineHeight: 1.5 }}>
-            Thresholds for visual warnings (orange highlights). Leave blank to use the defaults.
+            These thresholds drive Watchkeeper alert notifications and visual warnings. Leave blank to disable each alert.
+            Alert emails are sent to the registered owner address for this boat.
           </div>
           <Field label="Low water depth alarm (m)" hint="Warn when depth falls below this value.">
             <input type="number" step="0.1" style={FIELD_STYLE} value={s.depth_alarm_min_m ?? ""}
@@ -156,6 +157,120 @@ export default function SettingsModal({
                    placeholder="e.g. 12.0"
                    onChange={(e) => update("low_battery_v", e.target.value === "" ? null : Number(e.target.value))} />
           </Field>
+
+          <div style={{ marginTop: 14, paddingTop: 10, borderTop: "1px solid rgba(126,171,200,0.18)" }}>
+            <div style={{ fontSize: 10, letterSpacing: 2, color: "#7eabc8", textTransform: "uppercase", marginBottom: 10 }}>
+              Watchkeeper Delivery
+            </div>
+
+            <Field label="Watchkeeper enabled">
+              <label style={{ display: "flex", alignItems: "center", gap: 8, color: "#e8f4f8", fontSize: 13 }}>
+                <input
+                  type="checkbox"
+                  checked={s.watchkeeper_enabled !== false}
+                  onChange={(e) => update("watchkeeper_enabled", e.target.checked)}
+                />
+                Enable Watchkeeper notifications
+              </label>
+            </Field>
+
+            <Field label="Offline after (minutes)" hint="Triggers offline alert if no telemetry arrives within this window.">
+              <input
+                type="number"
+                step="1"
+                min="1"
+                style={FIELD_STYLE}
+                value={s.offline_after_min ?? ""}
+                placeholder="e.g. 30"
+                onChange={(e) => update("offline_after_min", e.target.value === "" ? null : Number(e.target.value))}
+              />
+            </Field>
+
+            <Field label="Email channel enabled">
+              <label style={{ display: "flex", alignItems: "center", gap: 8, color: "#e8f4f8", fontSize: 13 }}>
+                <input
+                  type="checkbox"
+                  checked={s.notify_email_enabled !== false}
+                  onChange={(e) => update("notify_email_enabled", e.target.checked)}
+                />
+                Send emails
+              </label>
+            </Field>
+
+            <Field label="Additional email recipients" hint="Comma or space separated. Owner email is always included.">
+              <textarea
+                style={{ ...FIELD_STYLE, minHeight: 52, resize: "vertical" }}
+                value={Array.isArray(s.watchkeeper_recipients) ? s.watchkeeper_recipients.join(", ") : ""}
+                placeholder="captain@example.com, crew@example.com"
+                onChange={(e) => update(
+                  "watchkeeper_recipients",
+                  e.target.value
+                    .split(/[\n,;\s]+/)
+                    .map((x) => x.trim().toLowerCase())
+                    .filter(Boolean),
+                )}
+              />
+            </Field>
+
+            <Field label="Telegram channel enabled">
+              <label style={{ display: "flex", alignItems: "center", gap: 8, color: "#e8f4f8", fontSize: 13 }}>
+                <input
+                  type="checkbox"
+                  checked={!!s.notify_telegram_enabled}
+                  onChange={(e) => update("notify_telegram_enabled", e.target.checked)}
+                />
+                Send Telegram alerts
+              </label>
+            </Field>
+
+            <Field label="Telegram chat ID">
+              <input
+                style={FIELD_STYLE}
+                value={s.telegram_chat_id || ""}
+                placeholder="e.g. -1001234567890"
+                onChange={(e) => update("telegram_chat_id", e.target.value)}
+              />
+            </Field>
+
+            <Field label="Quiet hours enabled">
+              <label style={{ display: "flex", alignItems: "center", gap: 8, color: "#e8f4f8", fontSize: 13 }}>
+                <input
+                  type="checkbox"
+                  checked={!!s.quiet_hours_enabled}
+                  onChange={(e) => update("quiet_hours_enabled", e.target.checked)}
+                />
+                Suppress trigger notifications during quiet hours
+              </label>
+            </Field>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
+              <Field label="Quiet start (HH:MM)">
+                <input
+                  style={FIELD_STYLE}
+                  value={s.quiet_hours_start || ""}
+                  placeholder="22:00"
+                  onChange={(e) => update("quiet_hours_start", e.target.value)}
+                />
+              </Field>
+              <Field label="Quiet end (HH:MM)">
+                <input
+                  style={FIELD_STYLE}
+                  value={s.quiet_hours_end || ""}
+                  placeholder="07:00"
+                  onChange={(e) => update("quiet_hours_end", e.target.value)}
+                />
+              </Field>
+            </div>
+
+            <Field label="Quiet hours timezone">
+              <input
+                style={FIELD_STYLE}
+                value={s.quiet_hours_tz || "Europe/Tallinn"}
+                placeholder="Europe/Tallinn"
+                onChange={(e) => update("quiet_hours_tz", e.target.value)}
+              />
+            </Field>
+          </div>
         </div>
       )}
 

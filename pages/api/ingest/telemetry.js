@@ -1,6 +1,7 @@
 import { putTelemetry } from "../../../lib/telemetryStore";
 import { norm } from "../../../lib/owners";
 import { appendTelemetryHistory } from "../../../lib/supabase";
+import { evaluateAndNotifyAlerts } from "../../../lib/alerts";
 
 // Accepts telemetry pushed by EMQX rule-engine webhook (or any HTTP client).
 //
@@ -168,6 +169,9 @@ export default async function handler(req, res) {
     const record = clean(body);
     if (!record.slug) return res.status(400).json({ error: "invalid slug" });
     const stored = await putTelemetry(record.slug, record);
+    evaluateAndNotifyAlerts(stored.slug, stored).catch((e) =>
+      console.error("[ingest] evaluateAndNotifyAlerts rejected:", e?.message || e),
+    );
     // Best-effort long-term history (Supabase). Failures are logged inside
     // appendTelemetryHistory so they're visible in Vercel runtime logs, but
     // they must not block the live Redis ingest path.

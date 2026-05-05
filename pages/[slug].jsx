@@ -148,6 +148,72 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
   const [scenariosBusy, setScenariosBusy] = useState(false);
   const [scenariosMsg, setScenariosMsg] = useState("");
   const [editingScenario, setEditingScenario] = useState(null); // null = not editing
+  const [alerts, setAlerts] = useState({ active: [], history: [], meta: {} });
+  const [alertsErr, setAlertsErr] = useState("");
+  const [alertActionBusy, setAlertActionBusy] = useState({});
+
+  async function loadWatchkeeperAlerts() {
+    try {
+      const r = await fetch(`/api/boats/${slug}/alerts`);
+      const j = await r.json();
+      if (!r.ok) {
+        setAlertsErr(j?.error || "could not load watchkeeper alerts");
+        return;
+      }
+      setAlerts({
+        active: Array.isArray(j.active) ? j.active : [],
+        history: Array.isArray(j.history) ? j.history : [],
+        meta: j.meta && typeof j.meta === "object" ? j.meta : {},
+      });
+      setAlertsErr("");
+    } catch {
+      setAlertsErr("could not load watchkeeper alerts");
+    }
+  }
+
+  async function acknowledge(rule) {
+    const key = `ack:${rule}`;
+    setAlertActionBusy((p) => ({ ...p, [key]: true }));
+    try {
+      const r = await fetch(`/api/boats/${slug}/alerts/ack`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rule }),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        setAlertsErr(j?.error || "ack failed");
+      } else {
+        await loadWatchkeeperAlerts();
+      }
+    } catch {
+      setAlertsErr("ack failed");
+    } finally {
+      setAlertActionBusy((p) => ({ ...p, [key]: false }));
+    }
+  }
+
+  async function snooze(rule, minutes) {
+    const key = `snooze:${rule}`;
+    setAlertActionBusy((p) => ({ ...p, [key]: true }));
+    try {
+      const r = await fetch(`/api/boats/${slug}/alerts/snooze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rule, minutes }),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        setAlertsErr(j?.error || "snooze failed");
+      } else {
+        await loadWatchkeeperAlerts();
+      }
+    } catch {
+      setAlertsErr("snooze failed");
+    } finally {
+      setAlertActionBusy((p) => ({ ...p, [key]: false }));
+    }
+  }
 
   // Pull live boat overrides (in case it was edited via the marina UI)
   useEffect(() => {
@@ -233,6 +299,18 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
     }
     loadAccess();
     return () => { alive = false; };
+  }, [accessKind, slug]);
+
+  useEffect(() => {
+    if (accessKind !== "owner") return;
+    let alive = true;
+    async function loadAlerts() {
+      if (!alive) return;
+      await loadWatchkeeperAlerts();
+    }
+    loadAlerts();
+    const t = setInterval(loadAlerts, 30000);
+    return () => { alive = false; clearInterval(t); };
   }, [accessKind, slug]);
 
   useEffect(() => {
@@ -834,6 +912,19 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
         </Section>
 
         {/* Photos */}
+        {isOwnerView && (
+          <Section title="Watchkeeper">
+            <WatchkeeperPanel
+              alerts={alerts}
+              error={alertsErr}
+              onAcknowledge={acknowledge}
+              onSnooze={snooze}
+              busy={alertActionBusy}
+            />
+          </Section>
+        )}
+
+        {/* Photos */}
         <Section title="📷 Photos">
           <BoatPhotos slug={slug} color={boat.color} />
         </Section>
@@ -1397,6 +1488,165 @@ function TelemetryGroup({ title, children, style }) {
     <div style={style}>
       <div style={{fontSize:9,letterSpacing:2,color:"#7eabc8",textTransform:"uppercase",marginBottom:8}}>{title}</div>
       <div style={{display:"flex",flexWrap:"wrap",gap:12}}>{children}</div>
+    </div>
+  );
+}
+
+function fmtAlertTs(ts) {
+  const n = Number(ts);
+  if (!Number.isFinite(n)) return "-";
+  return new Date(n).toLocaleString();
+}
+
+function WatchkeeperPanel({ alerts, error, onAcknowledge, onSnooze, busy = {} }) {
+  const active = Array.isArray(alerts?.active) ? alerts.active : [];
+  const history = Array.isArray(alerts?.history) ? alerts.history : [];
+  const meta = alerts?.meta && typeof alerts.meta === "object" ? alerts.meta : {};
+  const lastTelemetryTs = Number(meta.last_telemetry_ts);
+  const offlineAfter = Number(meta.offline_after_min);
+
+  return (
+    <div>
+      {error && <div style={{ fontSize: 11, color: "#e08080", marginBottom: 10 }}>{error}</div>}
+
+      <div style={{
+        background: "linear-gradient(180deg, rgba(13,36,56,0.55), rgba(9,28,44,0.55))",
+        border: "1px solid rgba(126,171,200,0.16)",
+        borderRadius: 7,
+        padding: "8px 10px",
+        marginBottom: 10,
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 10,
+        fontSize: 11,
+        color: "#c8e0f0",
+      }}>
+        <span>watchkeeper {meta.watchkeeper_enabled === false ? "disabled" : "enabled"}</span>
+        <span style={{ color: "#7eabc8" }}>last telemetry {Number.isFinite(lastTelemetryTs) ? fmtAlertTs(lastTelemetryTs) : "-"}</span>
+        <span style={{ color: "#7eabc8" }}>offline threshold {Number.isFinite(offlineAfter) ? `${offlineAfter} min` : "off"}</span>
+      </div>
+
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 9, letterSpacing: 2, color: "#7eabc8", textTransform: "uppercase", marginBottom: 7 }}>
+          Active Alerts
+        </div>
+        {active.length === 0 ? (
+          <div style={{ fontSize: 11, color: "#9eddb0" }}>No active alerts</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {active.map((a, idx) => (
+              <div key={`${a.rule}-${idx}`} style={{
+                background: "linear-gradient(180deg, rgba(80,26,12,0.45), rgba(60,18,9,0.45))",
+                border: "1px solid rgba(224,128,64,0.35)",
+                borderRadius: 8,
+                padding: "10px 12px",
+              }}>
+                <div style={{ fontSize: 12, color: "#f6c6a8", fontWeight: "bold", textTransform: "capitalize" }}>
+                  {a.label || a.rule}
+                </div>
+                <div style={{ fontSize: 11, color: "#f2d5c2", marginTop: 4 }}>
+                  value {a.value} | threshold {a.threshold}
+                </div>
+                <div style={{ fontSize: 10, color: "#d9b7a1", marginTop: 4 }}>
+                  active since {fmtAlertTs(a.ts)}
+                </div>
+                {a.acked_at && (
+                  <div style={{ fontSize: 10, color: "#9eddb0", marginTop: 3 }}>
+                    acknowledged {fmtAlertTs(a.acked_at)}
+                  </div>
+                )}
+                {a.snoozed_until && Number(a.snoozed_until) > Date.now() && (
+                  <div style={{ fontSize: 10, color: "#9ec8e0", marginTop: 3 }}>
+                    snoozed until {fmtAlertTs(a.snoozed_until)}
+                  </div>
+                )}
+                {a.pending_trigger && (
+                  <div style={{ fontSize: 10, color: "#f0c040", marginTop: 3 }}>
+                    pending notification
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                  <button
+                    onClick={() => onAcknowledge?.(a.rule)}
+                    disabled={!!busy[`ack:${a.rule}`] || !!a.acked_at}
+                    style={{
+                      padding: "5px 9px",
+                      cursor: a.acked_at ? "default" : "pointer",
+                      background: a.acked_at ? "rgba(42,154,74,0.2)" : "rgba(255,255,255,0.06)",
+                      color: a.acked_at ? "#9eddb0" : "#9ec8e0",
+                      border: "1px solid rgba(126,171,200,0.25)",
+                      borderRadius: 5,
+                      fontSize: 10,
+                    }}
+                  >
+                    {busy[`ack:${a.rule}`] ? "Ack…" : (a.acked_at ? "Acknowledged" : "Acknowledge")}
+                  </button>
+                  <button
+                    onClick={() => onSnooze?.(a.rule, 60)}
+                    disabled={!!busy[`snooze:${a.rule}`]}
+                    style={{
+                      padding: "5px 9px",
+                      cursor: "pointer",
+                      background: "rgba(255,255,255,0.06)",
+                      color: "#9ec8e0",
+                      border: "1px solid rgba(126,171,200,0.25)",
+                      borderRadius: 5,
+                      fontSize: 10,
+                    }}
+                  >
+                    {busy[`snooze:${a.rule}`] ? "Snooze…" : "Snooze 60m"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div style={{ fontSize: 9, letterSpacing: 2, color: "#7eabc8", textTransform: "uppercase", marginBottom: 7 }}>
+          Recent Events
+        </div>
+        {history.length === 0 ? (
+          <div style={{ fontSize: 11, color: "#5a8aaa" }}>No alert events yet</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {history.slice(0, 12).map((ev, idx) => (
+              <div key={`${ev.rule}-${ev.ts}-${idx}`} style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 8,
+                alignItems: "center",
+                fontSize: 11,
+                color: "#c8e0f0",
+                background: "linear-gradient(180deg, rgba(13,36,56,0.55), rgba(9,28,44,0.55))",
+                border: "1px solid rgba(126,171,200,0.16)",
+                borderRadius: 7,
+                padding: "8px 10px",
+              }}>
+                <span style={{
+                  fontSize: 9,
+                  letterSpacing: 1,
+                  padding: "2px 6px",
+                  borderRadius: 3,
+                  border: `1px solid ${ev.status === "active" ? "#e08040" : "#2a9a4a"}`,
+                  color: ev.status === "active" ? "#f0b090" : "#9eddb0",
+                  textTransform: "uppercase",
+                }}>
+                  {ev.status}
+                </span>
+                <span style={{ textTransform: "capitalize" }}>{ev.rule?.replaceAll("_", " ")}</span>
+                <span style={{ color: "#7eabc8" }}>value {ev.value}</span>
+                <span style={{ color: "#7eabc8" }}>threshold {ev.threshold}</span>
+                {Array.isArray(ev.notified_channels) && ev.notified_channels.length > 0 && (
+                  <span style={{ color: "#9eddb0" }}>via {ev.notified_channels.join("+")}</span>
+                )}
+                <span style={{ marginLeft: "auto", color: "#5a8aaa" }}>{fmtAlertTs(ev.ts)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
