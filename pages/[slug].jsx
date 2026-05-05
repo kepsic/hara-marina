@@ -1325,6 +1325,12 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
                 notes: s.notes ?? prev.notes,
                 no_battery: typeof s.no_battery === "boolean" ? s.no_battery : prev.no_battery,
                 relay_labels: s.relay_labels && typeof s.relay_labels === "object" ? s.relay_labels : (prev.relay_labels || {}),
+                model:  s.model ?? prev.model,
+                length: (typeof s.length_m === "number") ? s.length_m : (s.length_m === null ? "" : prev.length),
+                beam:   (typeof s.beam_m   === "number") ? s.beam_m   : (s.beam_m   === null ? "" : prev.beam),
+                draft:  (typeof s.draft_m  === "number") ? s.draft_m  : (s.draft_m  === null ? "" : prev.draft),
+                engine: s.engine ?? prev.engine,
+                equipment: Array.isArray(s.equipment) ? s.equipment : (prev.equipment || []),
               }));
             }}
           />

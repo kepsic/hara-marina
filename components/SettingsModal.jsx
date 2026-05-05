@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { EQUIPMENT_OPTIONS } from "../lib/boatSettings";
 
 const FIELD_STYLE = {
   width: "100%", padding: "8px 10px", fontSize: 13,
@@ -77,6 +78,7 @@ export default function SettingsModal({
       <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
         {[
           { k: "identity", label: "Identity" },
+          { k: "vessel",   label: "Vessel" },
           { k: "relays",   label: "Relays" },
           { k: "alarms",   label: "Alarms" },
           { k: "access",   label: "Access PIN" },
@@ -129,6 +131,10 @@ export default function SettingsModal({
       {tab === "relays" && (
         <RelaysTab labels={s.relay_labels || {}}
                    onChange={(next) => update("relay_labels", next)} />
+      )}
+
+      {tab === "vessel" && (
+        <VesselTab s={s} update={update} />
       )}
 
       {tab === "alarms" && (
@@ -327,6 +333,72 @@ function TabBtn({ active, children, onClick }) {
       borderRadius: 6, padding: "6px 12px", fontSize: 11, letterSpacing: 1,
       textTransform: "uppercase", cursor: "pointer", fontFamily: "inherit",
     }}>{children}</button>
+  );
+}
+
+function VesselTab({ s, update }) {
+  const equipment = Array.isArray(s.equipment) ? s.equipment : [];
+  const toggle = (item) => {
+    const next = equipment.includes(item)
+      ? equipment.filter((x) => x !== item)
+      : [...equipment, item];
+    update("equipment", next);
+  };
+  const numField = (k) => (s[k] === null || s[k] === undefined ? "" : String(s[k]));
+  const setNum = (k, v) => update(k, v === "" ? null : v);
+  return (
+    <div>
+      <div style={{ fontSize: 11, color: "#7eabc8", marginBottom: 14, lineHeight: 1.5 }}>
+        Vessel specs shown on the public boat page and in the marina overview.
+      </div>
+      <Field label="Vessel model">
+        <input style={FIELD_STYLE} value={s.model || ""} placeholder="e.g. Beneteau First 35"
+               onChange={(e) => update("model", e.target.value)} />
+      </Field>
+      <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ flex: 1 }}>
+          <Field label="Length m">
+            <input style={FIELD_STYLE} type="number" step="0.1" min="0" inputMode="decimal"
+                   value={numField("length_m")} placeholder="10.5"
+                   onChange={(e) => setNum("length_m", e.target.value)} />
+          </Field>
+        </div>
+        <div style={{ flex: 1 }}>
+          <Field label="Beam m">
+            <input style={FIELD_STYLE} type="number" step="0.1" min="0" inputMode="decimal"
+                   value={numField("beam_m")} placeholder="3.4"
+                   onChange={(e) => setNum("beam_m", e.target.value)} />
+          </Field>
+        </div>
+        <div style={{ flex: 1 }}>
+          <Field label="Draft m">
+            <input style={FIELD_STYLE} type="number" step="0.1" min="0" inputMode="decimal"
+                   value={numField("draft_m")} placeholder="1.8"
+                   onChange={(e) => setNum("draft_m", e.target.value)} />
+          </Field>
+        </div>
+      </div>
+      <Field label="Engine">
+        <input style={FIELD_STYLE} value={s.engine || ""} placeholder="Volvo D2-40"
+               onChange={(e) => update("engine", e.target.value)} />
+      </Field>
+      <Field label="Equipment" hint="Tap to toggle. These appear as tags on the boat page.">
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {EQUIPMENT_OPTIONS.map((item) => {
+            const on = equipment.includes(item);
+            return (
+              <button key={item} type="button" onClick={() => toggle(item)} style={{
+                padding: "4px 9px", fontSize: 11, borderRadius: 4, cursor: "pointer",
+                background: on ? "rgba(240,192,64,0.18)" : "rgba(255,255,255,0.04)",
+                color: on ? "#f0c040" : "#9ec8e0",
+                border: `1px solid ${on ? "rgba(240,192,64,0.55)" : "rgba(126,171,200,0.25)"}`,
+                fontFamily: "inherit",
+              }}>{item}</button>
+            );
+          })}
+        </div>
+      </Field>
+    </div>
   );
 }
 
