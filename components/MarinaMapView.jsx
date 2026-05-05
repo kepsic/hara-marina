@@ -3,6 +3,7 @@ import { divIcon } from "leaflet";
 import { MapContainer, TileLayer, Marker, Polyline, Tooltip, useMapEvents } from "react-leaflet";
 import BoatWindRose from "./BoatWindRose";
 import WindCanvas from "./WindCanvas";
+import BookingWizardModal from "./BookingWizardModal";
 
 const DEFAULT_BERTH_POINTS = {
   A: [
@@ -682,6 +683,7 @@ export default function MarinaMapView({
   const [showWindCanvas, setShowWindCanvas] = useState(true);
   const [zoom, setZoom] = useState(17);
   const [orderDragId, setOrderDragId] = useState(null);
+  const [bookingSlot, setBookingSlot] = useState(null);
   const [orderDragOverId, setOrderDragOverId] = useState(null);
   const [selectedDockId, setSelectedDockId] = useState(null);
   const [drawDockMode, setDrawDockMode] = useState(false);
@@ -865,8 +867,23 @@ export default function MarinaMapView({
               eventHandlers={{
                 click: () => {
                   if (!bookable) return;
-                  if (!(isSuperAdmin && editMode)) return;
-                  setDraft((current) => updateBerthField(current || active, slot.berthId, { occupied: !occupied }));
+                  // Super-admin in edit mode toggles the occupied flag (existing behaviour).
+                  if (isSuperAdmin && editMode) {
+                    setDraft((current) => updateBerthField(current || active, slot.berthId, { occupied: !occupied }));
+                    return;
+                  }
+                  // Public click on a free guest berth → open the booking wizard.
+                  if (!occupied) {
+                    setBookingSlot({
+                      berthId: slot.berthId,
+                      dockId: slot.dockId,
+                      dockName: slot.dockName,
+                      label: slot.label,
+                      maxLengthM: slot.maxLengthM,
+                      maxBeamM: slot.maxBeamM,
+                      maxDraftM: slot.maxDraftM,
+                    });
+                  }
                 },
               }}
             >
@@ -884,6 +901,11 @@ export default function MarinaMapView({
                 {bookable && isSuperAdmin && editMode ? (
                   <div style={{ fontSize: 10, marginTop: 4, color: "#1f6fa8", fontWeight: 600 }}>
                     Click → mark {occupied ? "free" : "occupied"}
+                  </div>
+                ) : null}
+                {bookable && !occupied && !(isSuperAdmin && editMode) ? (
+                  <div style={{ fontSize: 10, marginTop: 4, color: "#1f6fa8", fontWeight: 600 }}>
+                    Click → book this berth
                   </div>
                 ) : null}
               </Tooltip>
@@ -1641,6 +1663,14 @@ export default function MarinaMapView({
           )}
         </div>
       )}
+
+      <BookingWizardModal
+        open={!!bookingSlot}
+        slot={bookingSlot}
+        marinaSlug={null}
+        onClose={() => setBookingSlot(null)}
+        onCreated={() => { /* hooked into UI refresh elsewhere if needed */ }}
+      />
     </div>
   );
 }
