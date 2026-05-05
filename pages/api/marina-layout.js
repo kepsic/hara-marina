@@ -177,6 +177,8 @@ function cleanBerths(raw, fallback, dockIds) {
       enabled: entry?.enabled !== false,
       pos: clampPt(entry.pos),
       headingDeg,
+      occupied: entry?.occupied === true,
+      guestLabel: typeof entry?.guestLabel === "string" ? entry.guestLabel.trim().slice(0, 32) : "",
     });
   }
   return out.length ? out : clone(fallback);

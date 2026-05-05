@@ -319,6 +319,46 @@ function dockMarkerIcon(label, selected) {
   });
 }
 
+function guestBerthIcon(occupied, headingDeg, zoom) {
+  const scale = boatScaleForZoom(zoom);
+  const width = Math.round(72 * scale);
+  const height = Math.round(28 * scale);
+  const rotationDeg = (((Number(headingDeg) || 270) - 270) % 360 + 360) % 360;
+  if (occupied) {
+    return divIcon({
+      className: "hara-guest-marker",
+      html: `
+        <div style="width:${width}px;height:${height}px;display:flex;align-items:center;justify-content:center;pointer-events:auto;transform:rotate(${rotationDeg}deg);transform-origin:50% 50%;">
+          <svg width="${width}" height="${height}" viewBox="0 0 80 32" fill="none" xmlns="http://www.w3.org/2000/svg" style="overflow:visible;">
+            <g transform="translate(80,0) scale(-1,1)">
+              <path d="M6 16 C6 16 18 4 50 4 L74 10 L76 16 L74 22 L50 28 C18 28 6 16 6 16Z"
+                fill="rgba(160,180,200,0.45)" stroke="rgba(255,255,255,0.7)" stroke-width="1.4" stroke-dasharray="4,3" />
+              <text x="50%" y="55%" text-anchor="middle" font-size="11" font-weight="700" fill="#fff" transform="scale(-1,1) translate(-80,0)">G</text>
+            </g>
+          </svg>
+        </div>
+      `,
+      iconSize: [width, height],
+      iconAnchor: [width / 2, height / 2],
+    });
+  }
+  return divIcon({
+    className: "hara-empty-marker",
+    html: `
+      <div style="width:${width}px;height:${height}px;display:flex;align-items:center;justify-content:center;pointer-events:auto;transform:rotate(${rotationDeg}deg);transform-origin:50% 50%;opacity:0.55;">
+        <svg width="${width}" height="${height}" viewBox="0 0 80 32" fill="none" xmlns="http://www.w3.org/2000/svg" style="overflow:visible;">
+          <g transform="translate(80,0) scale(-1,1)">
+            <path d="M6 16 C6 16 18 4 50 4 L74 10 L76 16 L74 22 L50 28 C18 28 6 16 6 16Z"
+              fill="none" stroke="rgba(200,224,240,0.55)" stroke-width="1.2" stroke-dasharray="3,3" />
+          </g>
+        </svg>
+      </div>
+    `,
+    iconSize: [width, height],
+    iconAnchor: [width / 2, height / 2],
+  });
+}
+
 function nextDockId(docks) {
   const used = new Set((docks || []).map((dock) => String(dock.id)));
   for (let i = 0; i < 26; i += 1) {
@@ -687,6 +727,44 @@ export default function MarinaMapView({
           maxNativeZoom={19}
           maxZoom={19}
         />
+
+        {berthSlots.map((slot, idx) => {
+          const boat = assignedBoats[idx];
+          if (boat) return null;
+          const berth = berths.find((b) => b.id === slot.berthId);
+          const occupied = berth?.occupied === true;
+          const guestLabel = berth?.guestLabel || "";
+          const showAsEmpty = !occupied && !(isSuperAdmin && editMode);
+          if (showAsEmpty) return null;
+          return (
+            <Marker
+              key={`guest-${slot.berthId}`}
+              position={slot.pos}
+              icon={guestBerthIcon(occupied, slot.headingDeg, zoom)}
+              eventHandlers={{
+                click: () => {
+                  if (!(isSuperAdmin && editMode)) return;
+                  setDraft((current) => updateBerthField(current || active, slot.berthId, { occupied: !occupied }));
+                },
+              }}
+            >
+              <Tooltip direction="top" offset={[0, -6]}>
+                <div style={{ fontSize: 11, fontWeight: "bold" }}>
+                  {occupied ? (guestLabel ? `Guest · ${guestLabel}` : "Guest berth · occupied") : "Free berth"}
+                </div>
+                <div style={{ fontSize: 10, opacity: 0.85 }}>
+                  Dock {slot.dockName} · {slot.label}
+                  {slot.side === "secondary" ? " · far side" : ""}
+                </div>
+                {isSuperAdmin && editMode ? (
+                  <div style={{ fontSize: 10, marginTop: 4, color: "#1f6fa8", fontWeight: 600 }}>
+                    Click → mark {occupied ? "free" : "occupied"}
+                  </div>
+                ) : null}
+              </Tooltip>
+            </Marker>
+          );
+        })}
 
         {berthSlots.map((slot, idx) => {
           const boat = assignedBoats[idx];
@@ -1157,39 +1235,58 @@ export default function MarinaMapView({
                         </div>
 
                         {isExpanded && (
-                          <div style={{ display: "grid", gap: 4 }}>
+                          <div style={{ display: "grid", gap: 6 }}>
                             {dockBerths.map((berth) => (
-                              <div key={berth.id} style={{ display: "grid", gridTemplateColumns: "1fr 80px 60px auto", gap: 4, alignItems: "center" }}>
-                                <input
-                                  value={berth.label || ""}
-                                  onChange={(e) => setDraft((current) => updateBerthField(current || active, berth.id, { label: e.target.value.slice(0, 24) || berth.id }))}
-                                  placeholder="Label"
-                                  style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4, fontSize: 10, padding: "3px 5px" }}
-                                />
-                                <select
-                                  value={berth.side || "primary"}
-                                  disabled={dock.berthMode !== "double"}
-                                  onChange={(e) => setDraft((current) => updateBerthField(current || active, berth.id, { side: e.target.value }))}
-                                  style={{ background: "#102537", color: dock.berthMode !== "double" ? "#6a8395" : "#dcecf5", border: "1px solid #36566b", borderRadius: 4, fontSize: 10 }}
-                                >
-                                  <option value="primary">Near</option>
-                                  <option value="secondary">Far</option>
-                                </select>
-                                <label style={{ fontSize: 10, color: "#7eabc8", display: "flex", alignItems: "center", gap: 4, justifyContent: "center" }}>
+                              <div key={berth.id} style={{ display: "grid", gap: 3 }}>
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 80px 60px auto", gap: 4, alignItems: "center" }}>
                                   <input
-                                    type="checkbox"
-                                    checked={berth.enabled !== false}
-                                    onChange={(e) => setDraft((current) => updateBerthField(current || active, berth.id, { enabled: e.target.checked }))}
+                                    value={berth.label || ""}
+                                    onChange={(e) => setDraft((current) => updateBerthField(current || active, berth.id, { label: e.target.value.slice(0, 24) || berth.id }))}
+                                    placeholder="Label"
+                                    style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4, fontSize: 10, padding: "3px 5px" }}
                                   />
-                                  On
-                                </label>
-                                <button
-                                  onClick={() => setDraft((current) => removeBerth(current || active, berth.id))}
-                                  style={{ cursor: "pointer", borderRadius: 4, border: "1px solid rgba(224,128,64,0.35)", background: "rgba(224,128,64,0.12)", color: "#e8b090", padding: "3px 6px", fontSize: 10 }}
-                                  title="Remove berth"
-                                >
-                                  ✕
-                                </button>
+                                  <select
+                                    value={berth.side || "primary"}
+                                    disabled={dock.berthMode !== "double"}
+                                    onChange={(e) => setDraft((current) => updateBerthField(current || active, berth.id, { side: e.target.value }))}
+                                    style={{ background: "#102537", color: dock.berthMode !== "double" ? "#6a8395" : "#dcecf5", border: "1px solid #36566b", borderRadius: 4, fontSize: 10 }}
+                                  >
+                                    <option value="primary">Near</option>
+                                    <option value="secondary">Far</option>
+                                  </select>
+                                  <label style={{ fontSize: 10, color: "#7eabc8", display: "flex", alignItems: "center", gap: 4, justifyContent: "center" }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={berth.enabled !== false}
+                                      onChange={(e) => setDraft((current) => updateBerthField(current || active, berth.id, { enabled: e.target.checked }))}
+                                    />
+                                    On
+                                  </label>
+                                  <button
+                                    onClick={() => setDraft((current) => removeBerth(current || active, berth.id))}
+                                    style={{ cursor: "pointer", borderRadius: 4, border: "1px solid rgba(224,128,64,0.35)", background: "rgba(224,128,64,0.12)", color: "#e8b090", padding: "3px 6px", fontSize: 10 }}
+                                    title="Remove berth"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                                <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 4, alignItems: "center", paddingLeft: 4 }}>
+                                  <label style={{ fontSize: 10, color: berth.occupied ? "#e8b090" : "#7eabc8", display: "flex", alignItems: "center", gap: 4 }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={berth.occupied === true}
+                                      onChange={(e) => setDraft((current) => updateBerthField(current || active, berth.id, { occupied: e.target.checked }))}
+                                    />
+                                    Occupied
+                                  </label>
+                                  <input
+                                    value={berth.guestLabel || ""}
+                                    onChange={(e) => setDraft((current) => updateBerthField(current || active, berth.id, { guestLabel: e.target.value.slice(0, 32) }))}
+                                    placeholder="Guest name / note (optional)"
+                                    disabled={berth.occupied !== true}
+                                    style={{ background: "#102537", color: berth.occupied ? "#dcecf5" : "#6a8395", border: "1px solid #36566b", borderRadius: 4, fontSize: 10, padding: "3px 5px" }}
+                                  />
+                                </div>
                               </div>
                             ))}
                           </div>
