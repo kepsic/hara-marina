@@ -423,13 +423,11 @@ function dockAxisStep(layout, dockId, meters) {
 // parallel columns (two-sided), evenly spaced along the dock heading axis.
 // Preserves per-berth metadata (label, occupancy, size limits, side), only
 // rewrites `pos`. Anchored on the current dock center so the dock stays put.
-function arrangeBerthsAlongDock(layout, dockId, { spacingM, sideOffsetM = 4 } = {}) {
+function arrangeBerthsAlongDock(layout, dockId, { spacingM = 5, sideOffsetM = 4 } = {}) {
   const next = cloneLayout(layout);
   const dock = getDocks(next).find((d) => d.id === dockId);
   if (!dock) return next;
-  const spacing = Number.isFinite(spacingM)
-    ? spacingM
-    : (Number.isFinite(dock.berthSpacingM) ? dock.berthSpacingM : 5);
+  const spacing = spacingM;
   const dockBerths = getBerths(next).filter((b) => b.dockId === dockId);
   if (!dockBerths.length) return next;
   const isDouble = dock.berthMode === "double";
@@ -509,7 +507,7 @@ function addBerth(layout, dockId) {
   // For two-sided docks alternate sides so columns grow evenly. For one-sided,
   // always primary.
   const side = mode === "double" && secondary.length < primary.length ? "secondary" : "primary";
-  const spacing = Number.isFinite(dock.berthSpacingM) ? dock.berthSpacingM : 5;
+  const spacing = 5;
   const sideOffset = 4;
   const along = dockAxisStep(next, dockId, spacing);
   let pos;
@@ -1351,18 +1349,6 @@ export default function MarinaMapView({
                           <span>{dockBerths.length} berth{dockBerths.length === 1 ? "" : "s"}</span>
                         </div>
 
-                        <div style={{ display: "grid", gridTemplateColumns: "auto 90px auto", gap: 6, alignItems: "center", marginBottom: 8, fontSize: 10, color: "#7eabc8" }} title="Distance (in metres) between adjacent berth centres along the dock. Smaller = boats packed tighter. Typical: 4–6 m for beam-to-dock berths, 12–14 m for stern-to-dock with finger piers.">
-                          <span>Berth spacing:</span>
-                          <input
-                            type="number" min="1" step="0.5"
-                            value={Number.isFinite(dock.berthSpacingM) ? dock.berthSpacingM : ""}
-                            onChange={(e) => setDraft((current) => updateDockField(current || active, dock.id, { berthSpacingM: e.target.value === "" ? null : Number(e.target.value) }))}
-                            placeholder="5"
-                            style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4, fontSize: 10, padding: "2px 4px" }}
-                          />
-                          <span>m (apply with Auto-arrange)</span>
-                        </div>
-
                         {dock.bookable && (
                           <div style={{ display: "grid", gridTemplateColumns: "auto repeat(3, 1fr)", gap: 4, alignItems: "center", marginBottom: 8, fontSize: 10, color: "#7eabc8" }} title="Default size limits inherited by all berths in this dock unless overridden per-berth.">
                             <span>Defaults (m):</span>
@@ -1399,8 +1385,8 @@ export default function MarinaMapView({
                           </button>
                           <div style={{ display: "flex", gap: 6 }}>
                             <button
-                              onClick={() => setDraft((current) => arrangeBerthsAlongDock(current || active, dock.id))}
-                              title={dock.berthMode === "double" ? "Re-snap berths into two parallel columns along the dock heading" : "Re-snap berths into a single column along the dock heading"}
+                              onClick={() => setDraft((current) => arrangeBerthsAlongDock(current || active, dock.id, { spacingM: Math.max(1, Math.round(stepDeg * 111320 * 10) / 10) }))}
+                              title={`Re-snap berths along the dock heading using the current Move-tab step size (~${(stepDeg * 111320).toFixed(1)} m).`}
                               style={{ cursor: "pointer", borderRadius: 4, border: "1px solid rgba(126,171,200,0.25)", background: "rgba(255,255,255,0.05)", color: "#dcecf5", padding: "3px 7px", fontSize: 10 }}
                             >
                               Auto-arrange
