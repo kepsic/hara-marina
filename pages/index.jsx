@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import Head from "next/head";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import WindCanvas from "../components/WindCanvas";
 import BoatWindRose from "../components/BoatWindRose";
+
+const MarinaMapView = dynamic(() => import("../components/MarinaMapView"), { ssr: false });
 
 const DOCK_SECTIONS = [
   { id: "A", boats: [1, 2, 3] },
@@ -1048,6 +1051,7 @@ export default function HaraMarina() {
           <div style={{display:"flex",gap:4,background:"rgba(0,0,0,0.3)",borderRadius:6,padding:3}}>
             {[
               {id:"marina",label:"⚓ Marina"},
+              {id:"map",label:"🗺 Map"},
               ...(authed ? [{id:"crane",label:"🏗 Crane"}] : []),
             ].map(tab=>(
               <button key={tab.id} onClick={()=>setView(tab.id)} style={{
@@ -1248,6 +1252,15 @@ export default function HaraMarina() {
                 )}
               </div>
             </>
+          )}
+
+          {view==="map"&&(
+            <MarinaMapView
+              boats={boats}
+              selectedId={selectedId}
+              queuedBoatIds={queuedBoatIds}
+              onBoatSelect={handleBoatTap}
+            />
           )}
 
           {view==="crane"&&authed&&<CraneView/>}
