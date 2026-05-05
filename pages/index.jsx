@@ -1331,6 +1331,8 @@ export default function HaraMarina() {
               layout={marinaLayout}
               isSuperAdmin={isSuperAdmin}
               onSaveLayout={saveMarinaLayout}
+              weather={weather}
+              marinaConditions={marinaConditions}
             />
           )}
 

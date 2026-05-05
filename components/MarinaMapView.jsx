@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip } from "react-leaflet";
+import BoatWindRose from "./BoatWindRose";
 
 const DEFAULT_LAYOUT = {
   center: [59.5881254, 25.6124356],
@@ -95,19 +96,34 @@ function rotateBerthRows(layout, deg) {
   return next;
 }
 
-export default function MarinaMapView({ boats, selectedId, queuedBoatIds, onBoatSelect, layout, isSuperAdmin, onSaveLayout }) {
+export default function MarinaMapView({
+  boats,
+  selectedId,
+  queuedBoatIds,
+  onBoatSelect,
+  layout,
+  isSuperAdmin,
+  onSaveLayout,
+  weather,
+  marinaConditions,
+}) {
   const [editMode, setEditMode] = useState(false);
   const [target, setTarget] = useState("berths-all");
   const [stepDeg, setStepDeg] = useState(0.00005);
   const [rotDeg, setRotDeg] = useState(2);
   const [draft, setDraft] = useState(layout || DEFAULT_LAYOUT);
   const [saving, setSaving] = useState(false);
+  const [windOpen, setWindOpen] = useState(true);
 
   useEffect(() => {
     setDraft(layout || DEFAULT_LAYOUT);
   }, [layout]);
 
   const active = draft || DEFAULT_LAYOUT;
+  const hasBoatWind = marinaConditions?.wind?.direction_deg != null && marinaConditions?.wind?.sample_count > 0;
+  const windDirDeg = hasBoatWind ? marinaConditions.wind.direction_deg : weather?.winddirection;
+  const windMs = hasBoatWind ? marinaConditions?.wind?.speed_ms : weather?.windspeed;
+  const windKn = typeof windMs === "number" ? windMs * 1.94384 : null;
   const bySection = {
     A: boats.filter((b) => b.section === "A"),
     B: boats.filter((b) => b.section === "B"),
@@ -212,12 +228,74 @@ export default function MarinaMapView({ boats, selectedId, queuedBoatIds, onBoat
         Tap a berth marker to open boat details.
       </div>
 
+      <div
+        style={{
+          position: "absolute",
+          right: 14,
+          top: 14,
+          zIndex: 560,
+          background: "rgba(9, 24, 36, 0.8)",
+          border: "1px solid rgba(126,171,200,0.28)",
+          borderRadius: 8,
+          color: "#c8e0f0",
+          width: windOpen ? 280 : 120,
+          transition: "width 0.2s ease",
+          overflow: "hidden",
+        }}
+      >
+        <button
+          onClick={() => setWindOpen((v) => !v)}
+          style={{
+            width: "100%",
+            background: "transparent",
+            border: "none",
+            color: "#c8e0f0",
+            padding: "8px 10px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            fontSize: 11,
+            letterSpacing: 1,
+          }}
+        >
+          <span>Wind Rose</span>
+          <span>{windOpen ? "▾" : "▸"}</span>
+        </button>
+
+        {windOpen && (
+          <div style={{ borderTop: "1px solid rgba(126,171,200,0.15)", padding: "8px 10px 10px" }}>
+            {typeof windDirDeg === "number" && typeof windKn === "number" ? (
+              <>
+                <BoatWindRose
+                  size={248}
+                  trueDirDeg={windDirDeg}
+                  trueSpeedKn={windKn}
+                  apparentAngle={null}
+                  apparentSpeedKn={null}
+                  headingDeg={null}
+                  cogDeg={null}
+                  centerModeLabel="M/S"
+                />
+                <div style={{ fontSize: 10, color: "#7eabc8", textAlign: "center", marginTop: 4 }}>
+                  {hasBoatWind ? "source: marina boats" : "source: weather station"}
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: 11, color: "#7eabc8", textAlign: "center", padding: "16px 6px" }}>
+                no wind data
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {isSuperAdmin && (
         <div
           style={{
             position: "absolute",
             right: 14,
-            top: 14,
+            top: windOpen ? 330 : 66,
             zIndex: 550,
             background: "rgba(9, 24, 36, 0.8)",
             border: "1px solid rgba(126,171,200,0.28)",
