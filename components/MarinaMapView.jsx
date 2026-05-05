@@ -1,59 +1,96 @@
+import { useEffect, useState } from "react";
 import { MapContainer, TileLayer, Polygon, Polyline, CircleMarker, Tooltip } from "react-leaflet";
 
-const HARA_CENTER = [59.5881254, 25.6124356];
-
-// Approximate harbor basin outline, matched to the landing-page marina sketch.
-const HARBOR_POLYGON = [
-  [59.5896254, 25.6109356],
-  [59.5897254, 25.6141356],
-  [59.5892254, 25.6142356],
-  [59.5889254, 25.6135356],
-  [59.5879254, 25.6134356],
-  [59.5877254, 25.6117356],
-  [59.5885254, 25.6111356],
-];
-
-const PIER_LINES = [
-  [
-    [59.5892754, 25.6119856],
-    [59.5878754, 25.6119856],
+const DEFAULT_LAYOUT = {
+  center: [59.5881254, 25.6124356],
+  harborPolygon: [
+    [59.5896254, 25.6109356],
+    [59.5897254, 25.6141356],
+    [59.5892254, 25.6142356],
+    [59.5889254, 25.6135356],
+    [59.5879254, 25.6134356],
+    [59.5877254, 25.6117356],
+    [59.5885254, 25.6111356],
   ],
-  [
-    [59.5885054, 25.6116856],
-    [59.5885054, 25.6129156],
+  pierLines: [
+    [
+      [59.5892754, 25.6119856],
+      [59.5878754, 25.6119856],
+    ],
+    [
+      [59.5885054, 25.6116856],
+      [59.5885054, 25.6129156],
+    ],
+    [
+      [59.5878754, 25.6119856],
+      [59.5886454, 25.6132856],
+    ],
   ],
-  [
-    [59.5878754, 25.6119856],
-    [59.5886454, 25.6132856],
-  ],
-];
-
-const BERTH_POSITIONS = {
-  A: [
-    [59.5882254, 25.6123156],
-    [59.5881654, 25.6124356],
-    [59.5881054, 25.6125556],
-  ],
-  B: [
-    [59.5880454, 25.6126756],
-    [59.5879854, 25.6127956],
-    [59.5879254, 25.6129156],
-    [59.5878654, 25.6130356],
-  ],
-  C: [
-    [59.5878054, 25.6131556],
-    [59.5877454, 25.6132756],
-    [59.5876854, 25.6133956],
-    [59.5876254, 25.6135156],
-    [59.5875654, 25.6136356],
-  ],
+  berthPositions: {
+    A: [
+      [59.5882254, 25.6123156],
+      [59.5881654, 25.6124356],
+      [59.5881054, 25.6125556],
+    ],
+    B: [
+      [59.5880454, 25.6126756],
+      [59.5879854, 25.6127956],
+      [59.5879254, 25.6129156],
+      [59.5878654, 25.6130356],
+    ],
+    C: [
+      [59.5878054, 25.6131556],
+      [59.5877454, 25.6132756],
+      [59.5876854, 25.6133956],
+      [59.5876254, 25.6135156],
+      [59.5875654, 25.6136356],
+    ],
+  },
+  fuelDock: [59.5884654, 25.6129156],
 };
 
 function keyFor(boat) {
   return `${boat.section}-${boat.id}`;
 }
 
-export default function MarinaMapView({ boats, selectedId, queuedBoatIds, onBoatSelect }) {
+function cloneLayout(layout) {
+  return JSON.parse(JSON.stringify(layout));
+}
+
+function shiftedPoint(point, dLat, dLon) {
+  return [point[0] + dLat, point[1] + dLon];
+}
+
+function shiftLayout(layout, target, dLat, dLon) {
+  const next = cloneLayout(layout);
+  const shiftArray = (arr) => arr.map((p) => shiftedPoint(p, dLat, dLon));
+
+  if (target === "center") next.center = shiftedPoint(next.center, dLat, dLon);
+  if (target === "basin") next.harborPolygon = shiftArray(next.harborPolygon);
+  if (target === "piers") next.pierLines = next.pierLines.map((line) => shiftArray(line));
+  if (target === "berths-all") {
+    for (const k of ["A", "B", "C"]) next.berthPositions[k] = shiftArray(next.berthPositions[k]);
+  }
+  if (target === "berths-A") next.berthPositions.A = shiftArray(next.berthPositions.A);
+  if (target === "berths-B") next.berthPositions.B = shiftArray(next.berthPositions.B);
+  if (target === "berths-C") next.berthPositions.C = shiftArray(next.berthPositions.C);
+  if (target === "fuel") next.fuelDock = shiftedPoint(next.fuelDock, dLat, dLon);
+
+  return next;
+}
+
+export default function MarinaMapView({ boats, selectedId, queuedBoatIds, onBoatSelect, layout, isSuperAdmin, onSaveLayout }) {
+  const [editMode, setEditMode] = useState(false);
+  const [target, setTarget] = useState("berths-all");
+  const [stepDeg, setStepDeg] = useState(0.00005);
+  const [draft, setDraft] = useState(layout || DEFAULT_LAYOUT);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setDraft(layout || DEFAULT_LAYOUT);
+  }, [layout]);
+
+  const active = draft || DEFAULT_LAYOUT;
   const bySection = {
     A: boats.filter((b) => b.section === "A"),
     B: boats.filter((b) => b.section === "B"),
@@ -70,7 +107,7 @@ export default function MarinaMapView({ boats, selectedId, queuedBoatIds, onBoat
       }}
     >
       <MapContainer
-        center={HARA_CENTER}
+        center={active.center}
         zoom={17}
         minZoom={14}
         maxZoom={20}
@@ -83,7 +120,7 @@ export default function MarinaMapView({ boats, selectedId, queuedBoatIds, onBoat
         />
 
         <Polygon
-          positions={HARBOR_POLYGON}
+          positions={active.harborPolygon}
           pathOptions={{
             color: "#7ec8e3",
             weight: 2,
@@ -94,7 +131,7 @@ export default function MarinaMapView({ boats, selectedId, queuedBoatIds, onBoat
           <Tooltip sticky>Hara sadam basin</Tooltip>
         </Polygon>
 
-        {PIER_LINES.map((line, i) => (
+        {active.pierLines.map((line, i) => (
           <Polyline
             key={i}
             positions={line}
@@ -105,7 +142,7 @@ export default function MarinaMapView({ boats, selectedId, queuedBoatIds, onBoat
         {(["A", "B", "C"]).flatMap((sectionId) => {
           const sectionBoats = bySection[sectionId];
           return sectionBoats.map((boat, idx) => {
-            const pos = BERTH_POSITIONS[sectionId][idx];
+            const pos = active.berthPositions[sectionId][idx];
             if (!pos) return null;
             const isSelected = boat.id === selectedId;
             const inQueue = queuedBoatIds.has(boat.id);
@@ -137,7 +174,7 @@ export default function MarinaMapView({ boats, selectedId, queuedBoatIds, onBoat
         })}
 
         <CircleMarker
-          center={[59.5884654, 25.6129156]}
+          center={active.fuelDock}
           radius={7}
           pathOptions={{
             color: "#5a4010",
@@ -169,6 +206,112 @@ export default function MarinaMapView({ boats, selectedId, queuedBoatIds, onBoat
       >
         Tap a berth marker to open boat details.
       </div>
+
+      {isSuperAdmin && (
+        <div
+          style={{
+            position: "absolute",
+            right: 14,
+            top: 14,
+            zIndex: 550,
+            background: "rgba(9, 24, 36, 0.8)",
+            border: "1px solid rgba(126,171,200,0.28)",
+            borderRadius: 8,
+            padding: 10,
+            color: "#c8e0f0",
+            width: 260,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <div style={{ fontSize: 10, letterSpacing: 1.2, textTransform: "uppercase", color: "#7eabc8" }}>Super Admin</div>
+            <button
+              onClick={() => {
+                setEditMode((v) => !v);
+                setDraft(layout || DEFAULT_LAYOUT);
+              }}
+              style={{
+                background: editMode ? "rgba(240,192,64,0.18)" : "rgba(255,255,255,0.06)",
+                color: editMode ? "#f0c040" : "#c8e0f0",
+                border: "1px solid rgba(126,171,200,0.28)",
+                borderRadius: 5,
+                fontSize: 10,
+                cursor: "pointer",
+                padding: "4px 8px",
+              }}
+            >
+              {editMode ? "Editing" : "Adjust"}
+            </button>
+          </div>
+
+          {editMode && (
+            <>
+              <div style={{ fontSize: 10, marginBottom: 6 }}>Target</div>
+              <select
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+                style={{ width: "100%", marginBottom: 8, background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
+              >
+                <option value="center">Map center</option>
+                <option value="basin">Basin polygon</option>
+                <option value="piers">Pier lines</option>
+                <option value="berths-all">All berths</option>
+                <option value="berths-A">Berths A</option>
+                <option value="berths-B">Berths B</option>
+                <option value="berths-C">Berths C</option>
+                <option value="fuel">Fuel dock</option>
+              </select>
+
+              <div style={{ fontSize: 10, marginBottom: 6 }}>Step</div>
+              <select
+                value={String(stepDeg)}
+                onChange={(e) => setStepDeg(Number(e.target.value))}
+                style={{ width: "100%", marginBottom: 10, background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
+              >
+                <option value="0.00002">Small (~2 m)</option>
+                <option value="0.00005">Medium (~5 m)</option>
+                <option value="0.0001">Large (~11 m)</option>
+              </select>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 10 }}>
+                <div />
+                <button onClick={() => setDraft((l) => shiftLayout(l, target, stepDeg, 0))} style={{ cursor: "pointer" }}>N</button>
+                <div />
+                <button onClick={() => setDraft((l) => shiftLayout(l, target, 0, -stepDeg))} style={{ cursor: "pointer" }}>W</button>
+                <button onClick={() => setDraft(layout || DEFAULT_LAYOUT)} style={{ cursor: "pointer" }}>Reset</button>
+                <button onClick={() => setDraft((l) => shiftLayout(l, target, 0, stepDeg))} style={{ cursor: "pointer" }}>E</button>
+                <div />
+                <button onClick={() => setDraft((l) => shiftLayout(l, target, -stepDeg, 0))} style={{ cursor: "pointer" }}>S</button>
+                <div />
+              </div>
+
+              <button
+                disabled={saving}
+                onClick={async () => {
+                  setSaving(true);
+                  try {
+                    const ok = await onSaveLayout?.(draft);
+                    if (!ok) setDraft(layout || DEFAULT_LAYOUT);
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+                style={{
+                  width: "100%",
+                  background: "rgba(42,154,74,0.22)",
+                  border: "1px solid rgba(42,154,74,0.45)",
+                  color: "#b8efcc",
+                  borderRadius: 5,
+                  padding: "7px 8px",
+                  cursor: "pointer",
+                  fontSize: 11,
+                }}
+              >
+                {saving ? "Saving..." : "Save layout"}
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

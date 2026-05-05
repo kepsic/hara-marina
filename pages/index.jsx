@@ -131,15 +131,58 @@ export default function HaraMarina() {
   const [panelTab, setPanelTab] = useState("details"); // 'details' | 'telemetry'
   const [telemetry, setTelemetry] = useState(null);
   const [authed, setAuthed] = useState(null); // null=unknown, false=anon, true=signed-in
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [marinaLayout, setMarinaLayout] = useState(null);
 
   // Probe auth state once on mount so we can gate interactive actions.
   useEffect(() => {
     let cancelled = false;
     fetch("/api/onboarding/me", { credentials: "same-origin" })
-      .then((r) => { if (!cancelled) setAuthed(r.ok); })
+      .then(async (r) => {
+        if (cancelled) return;
+        if (!r.ok) {
+          setAuthed(false);
+          setIsSuperAdmin(false);
+          return;
+        }
+        const j = await r.json().catch(() => ({}));
+        setAuthed(true);
+        setIsSuperAdmin(!!j.is_super_admin);
+      })
       .catch(() => { if (!cancelled) setAuthed(false); });
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadLayout() {
+      try {
+        const r = await fetch("/api/marina-layout");
+        if (!r.ok) return;
+        const j = await r.json();
+        if (!cancelled) setMarinaLayout(j.layout || null);
+      } catch {}
+    }
+    loadLayout();
+    return () => { cancelled = true; };
+  }, []);
+
+  async function saveMarinaLayout(nextLayout) {
+    try {
+      const r = await fetch("/api/marina-layout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ layout: nextLayout }),
+      });
+      if (!r.ok) return false;
+      const j = await r.json();
+      setMarinaLayout(j.layout || nextLayout);
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
   // ── Load from KV on mount ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -1260,6 +1303,9 @@ export default function HaraMarina() {
               selectedId={selectedId}
               queuedBoatIds={queuedBoatIds}
               onBoatSelect={handleBoatTap}
+              layout={marinaLayout}
+              isSuperAdmin={isSuperAdmin}
+              onSaveLayout={saveMarinaLayout}
             />
           )}
 
