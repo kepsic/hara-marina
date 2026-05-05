@@ -111,6 +111,7 @@ export default function HaraMarina() {
   const [boats,      setBoats]      = useState(INITIAL_BOATS);
   const [queue,      setQueue]      = useState([]);
   const [view,       setView]       = useState("marina");
+  const [savedView,  setSavedView]  = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [editMode,   setEditMode]   = useState(false);
   const [draft,      setDraft]      = useState(null);
@@ -133,6 +134,30 @@ export default function HaraMarina() {
   const [authed, setAuthed] = useState(null); // null=unknown, false=anon, true=signed-in
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [marinaLayout, setMarinaLayout] = useState(null);
+
+  // Persist selected landing tab across reloads.
+  useEffect(() => {
+    try {
+      const v = window.localStorage.getItem("hara:landing:view");
+      if (v) setSavedView(v);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (!savedView) return;
+    if (savedView === "crane") {
+      if (authed === true) setView("crane");
+      else if (authed === false) setView("marina");
+      return;
+    }
+    if (savedView === "marina" || savedView === "map") setView(savedView);
+  }, [savedView, authed]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("hara:landing:view", view);
+    } catch {}
+  }, [view]);
 
   // Probe auth state once on mount so we can gate interactive actions.
   useEffect(() => {
