@@ -689,6 +689,7 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
           tel={tel}
           ais={ais}
           alerts={alerts}
+          boat={boat}
         />
 
         {/* Tab bar */}

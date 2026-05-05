@@ -1,4 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
+import dynamic from "next/dynamic";
+
+// Leaflet touches `window`, so the map component must be loaded client-only.
+const BoatPositionMap = dynamic(() => import("./BoatPositionMap"), { ssr: false });
 
 /**
  * VesselSafetyHero — single-glance safety summary card shown on top of the
@@ -109,7 +113,7 @@ function deriveStatus({ tel, ais, alerts, passage, nowTs }) {
   return { tone: "unknown", primary: "Status unknown", detail: lastTs ? `last contact ${fmtRelMin(ageMs)}` : "no telemetry yet" };
 }
 
-export default function VesselSafetyHero({ slug, isOwnerView, tel, ais, alerts }) {
+export default function VesselSafetyHero({ slug, isOwnerView, tel, ais, alerts, boat }) {
   const [passage, setPassage] = useState(null);
   const [history, setHistory] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -218,6 +222,20 @@ export default function VesselSafetyHero({ slug, isOwnerView, tel, ais, alerts }
             <span><span style={{ color: "#7eabc8" }}>depth </span>{Number(tel.water_depth_m).toFixed(1)} m</span>
           )}
         </div>
+
+        {pos && (
+          <div style={{ marginTop: 12 }}>
+            <BoatPositionMap
+              lat={pos.lat}
+              lon={pos.lon}
+              name={boat?.name || slug}
+              color={boat?.color || "#2a9a4a"}
+              headingDeg={Number(tel?.cog_deg)}
+              sogKn={Number(tel?.sog_kn)}
+              height={220}
+            />
+          </div>
+        )}
 
         {passage?.status === "active" && (
           <div style={{
