@@ -84,9 +84,11 @@ function AttitudePanel({ kind, deg, hasValue, warnAbove, alertAbove, leftLabel, 
   const horizonR = Math.min(width, height) * 0.55;
 
   // Tilt the *horizon* opposite to the boat's tilt, so the boat appears upright.
-  // Heel: + heel = stbd low → horizon rotates +deg (right side rises).
-  // Trim: + trim = bow up   → horizon rotates -deg (right/bow side drops).
-  const horizonRot = kind === "heel" ? deg : -deg;
+  // SVG rotate() is clockwise-positive, so to make the horizon's right side
+  // *rise* we need a negative angle.
+  // Heel: + heel = stbd low → in boat frame horizon's right (stbd) rises → -deg.
+  // Trim: + trim = bow up   → in boat frame horizon's right (bow) drops  → +deg.
+  const horizonRot = kind === "heel" ? -deg : deg;
   const absDeg = Math.abs(deg);
   const color =
     !hasValue ? "#5a8aaa" :
