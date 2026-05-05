@@ -1,5 +1,5 @@
 # marina-bridge config — example
-# Generate a real one from https://hara-marina.vercel.app/onboard
+# Generate a real one from https://hara-marina.mereveer.ee/onboard
 
 slug: "moi"
 publish_interval: 30s

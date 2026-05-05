@@ -6,7 +6,7 @@
 #   EMQX_DASHBOARD__DEFAULT_PASSWORD
 #   MARINA_INGEST_TOKEN
 # Optional:
-#   MARINA_INGEST_URL (default: https://hara-marina.vercel.app/api/ingest/telemetry)
+#   MARINA_INGEST_URL (default: https://hara-marina.mereveer.ee/api/ingest/telemetry)
 #   EMQX_DASHBOARD__DEFAULT_USERNAME (default: admin)
 
 set -eu
@@ -14,7 +14,7 @@ set -eu
 API="http://127.0.0.1:18083/api/v5"
 USER="${EMQX_DASHBOARD__DEFAULT_USERNAME:-admin}"
 PASS="${EMQX_DASHBOARD__DEFAULT_PASSWORD:?must be set}"
-URL="${MARINA_INGEST_URL:-https://hara-marina.vercel.app/api/ingest/telemetry}"
+URL="${MARINA_INGEST_URL:-https://hara-marina.mereveer.ee/api/ingest/telemetry}"
 TOK="${MARINA_INGEST_TOKEN:?must be set}"
 
 # Wait until EMQX dashboard API is reachable.

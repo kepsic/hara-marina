@@ -17,7 +17,7 @@ with one shell command. No coding required.
 
 ## 1 · Generate your install command
 
-Open <https://hara-marina.vercel.app/onboard> on your laptop, sign in with
+Open <https://hara-marina.mereveer.ee/onboard> on your laptop, sign in with
 your email (you'll get a magic link), then:
 
 1. Pick your boat.
@@ -59,7 +59,7 @@ bridge connect to your Cerbo / YDWG.
 
 ## 4 · Check the dashboard
 
-Refresh `https://hara-marina.vercel.app/<your-boat-slug>`. Within ~30 s you
+Refresh `https://hara-marina.mereveer.ee/<your-boat-slug>`. Within ~30 s you
 should see battery voltage, shore-power state, GPS, etc.
 
 ## Troubleshooting

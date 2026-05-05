@@ -18,7 +18,7 @@ disabled.
 
 | Variable                              | Purpose                                                                 |
 |---------------------------------------|-------------------------------------------------------------------------|
-| `MARINA_INGEST_URL`                   | (optional) Marina ingest endpoint. Default: `https://hara-marina.vercel.app/api/ingest/telemetry` |
+| `MARINA_INGEST_URL`                   | (optional) Marina ingest endpoint. Default: `https://hara-marina.mereveer.ee/api/ingest/telemetry` |
 | `MARINA_INGEST_TOKEN`                 | **Required.** Same token as Vercel's `MARINA_INGEST_TOKEN`.            |
 | `EMQX_DASHBOARD__DEFAULT_USERNAME`    | Dashboard login (default `admin`)                                       |
 | `EMQX_DASHBOARD__DEFAULT_PASSWORD`    | **Required.** Dashboard password (>= 8 chars).                          |
@@ -88,7 +88,7 @@ mosquitto_pub \
   -m '{"battery":{"voltage":12.7,"percent":82}}'
 ```
 
-Then sign in to https://hara-marina.vercel.app/login and open `/moi`. The
+Then sign in to https://hara-marina.mereveer.ee/login and open `/moi`. The
 telemetry tile should show `● live` with `source: "live"` in the underlying
 API response.
 

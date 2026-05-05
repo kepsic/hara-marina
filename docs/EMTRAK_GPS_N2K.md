@@ -85,7 +85,7 @@ enabled.
 
 ## Step 5 — Verify on the boat page
 
-- Open your boat's hara-marina page (e.g. `https://hara-marina.vercel.app/<your-boat>`).
+- Open your boat's hara-marina page (e.g. `https://hara-marina.mereveer.ee/<your-boat>`).
 - Within ~30 seconds the **AIS · MARINA STATUS** panel should switch from
   "No AIS signal" to a live state with SOG/COG and an AIS position card.
 - The marina map will start showing your boat as soon as a fix is published.

@@ -18,7 +18,7 @@ marina.
 
 ## TL;DR
 
-1. Visit **https://hara-marina.vercel.app/onboard** and sign in.
+1. Visit **https://hara-marina.mereveer.ee/onboard** and sign in.
 2. Pick your boat and the hardware you have on board.
 3. Click **Generate credentials**. **Save the password** that appears — it is
    shown once.
@@ -32,7 +32,7 @@ marina.
 
 ## Step 1 — Run the wizard
 
-Sign in at **https://hara-marina.vercel.app/login** with the email the marina
+Sign in at **https://hara-marina.mereveer.ee/login** with the email the marina
 admin registered for your boat. Then go to **/onboard**.
 
 The wizard:
@@ -132,7 +132,7 @@ make build             # native build for the host
 
 ## Step 4 — Verify
 
-Open **https://hara-marina.vercel.app/&lt;your-slug&gt;**. Within 30 s you
+Open **https://hara-marina.mereveer.ee/&lt;your-slug&gt;**. Within 30 s you
 should see the readings from your boat. If the page header shows **DEMO** the
 bridge isn't connecting — see troubleshooting below.
 
@@ -174,7 +174,7 @@ status) are silently ignored — open an issue if you want a specific PGN added.
 If you'd rather push telemetry yourself, POST JSON to:
 
 ```
-POST https://hara-marina.vercel.app/api/ingest/telemetry
+POST https://hara-marina.mereveer.ee/api/ingest/telemetry
 Authorization: Bearer <MARINA_INGEST_TOKEN>
 Content-Type: application/json
 

@@ -262,7 +262,7 @@ Mode `0600`, owner `root` — it contains the MQTT password.
 
 ```toml
 [boat]
-slug = "moi"               # MUST match the URL slug at hara-marina.vercel.app/<slug>
+slug = "moi"               # MUST match the URL slug at hara-marina.mereveer.ee/<slug>
 interval_seconds = 60      # 60s on shore power; 300s on battery
 default_lat = 59.5740
 default_lon = 25.7430
@@ -328,8 +328,8 @@ In the EMQX dashboard:
 
 In the marina UI:
 
-- Sign in as the boat's owner email at `https://hara-marina.vercel.app/login`.
-- Open `https://hara-marina.vercel.app/<slug>`.
+- Sign in as the boat's owner email at `https://hara-marina.mereveer.ee/login`.
+- Open `https://hara-marina.mereveer.ee/<slug>`.
 - The "Telemetry" section should show `● live` and the same numbers the Pi
   printed to its journal — `source: "live"` in the underlying API response.
 
@@ -349,7 +349,7 @@ QoS / LWT / downlink commands but is operationally trivial:
 ```python
 import json, time, urllib.request
 req = urllib.request.Request(
-    "https://hara-marina.vercel.app/api/ingest/telemetry",
+    "https://hara-marina.mereveer.ee/api/ingest/telemetry",
     method="POST",
     headers={"Content-Type": "application/json",
              "Authorization": "Bearer YOUR_INGEST_TOKEN"},
