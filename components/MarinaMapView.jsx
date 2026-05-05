@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { MapContainer, TileLayer, CircleMarker, Tooltip } from "react-leaflet";
+import { divIcon } from "leaflet";
+import { MapContainer, TileLayer, Marker, Tooltip } from "react-leaflet";
 import BoatWindRose from "./BoatWindRose";
 import WindCanvas from "./WindCanvas";
 
@@ -107,6 +108,35 @@ function orderedBerthSlots(layout) {
   return out;
 }
 
+function boatMarkerIcon(color, isSelected) {
+  const stroke = isSelected ? "#f0c040" : "rgba(255,255,255,0.82)";
+  const strokeWidth = isSelected ? 2.5 : 1.2;
+  const width = 80;
+  const height = 32;
+  const shadow = isSelected
+    ? "drop-shadow(0 0 7px rgba(240,192,64,0.75))"
+    : "drop-shadow(0 1px 3px rgba(0,0,0,0.45))";
+
+  return divIcon({
+    className: "hara-boat-marker",
+    html: `
+      <div style="width:${width}px;height:${height}px;display:flex;align-items:center;justify-content:center;pointer-events:none;">
+        <svg width="${width}" height="${height}" viewBox="0 0 80 32" fill="none" xmlns="http://www.w3.org/2000/svg" style="overflow:visible;">
+          <g transform="translate(80,0) scale(-1,1)">
+            <path d="M6 16 C6 16 18 4 50 4 L74 10 L76 16 L74 22 L50 28 C18 28 6 16 6 16Z"
+              fill="${color}" stroke="${stroke}" stroke-width="${strokeWidth}" style="filter:${shadow};" />
+            <path d="M12 16 L70 16" stroke="rgba(255,255,255,0.15)" stroke-width="1" stroke-dasharray="4,3"/>
+            <line x1="38" y1="7" x2="38" y2="25" stroke="rgba(255,255,255,0.55)" stroke-width="1.5"/>
+            <ellipse cx="58" cy="16" rx="9" ry="5.5" fill="rgba(0,0,0,0.28)"/>
+          </g>
+        </svg>
+      </div>
+    `,
+    iconSize: [width, height],
+    iconAnchor: [width / 2, height / 2],
+  });
+}
+
 export default function MarinaMapView({
   boats,
   selectedId,
@@ -166,16 +196,10 @@ export default function MarinaMapView({
           const isSelected = boat.id === selectedId;
           const inQueue = queuedBoatIds.has(boat.id);
           return (
-            <CircleMarker
+            <Marker
               key={keyFor(boat)}
-              center={slot.pos}
-              radius={isSelected ? 9 : 7}
-              pathOptions={{
-                color: isSelected ? "#f0c040" : "#e8f4f8",
-                weight: isSelected ? 3 : 1.5,
-                fillColor: boat.color,
-                fillOpacity: 0.95,
-              }}
+              position={slot.pos}
+              icon={boatMarkerIcon(boat.color, isSelected)}
               eventHandlers={{ click: () => onBoatSelect(boat.id) }}
             >
               <Tooltip direction="top" offset={[0, -6]}>
@@ -187,7 +211,7 @@ export default function MarinaMapView({
                   {inQueue ? " · in crane queue" : ""}
                 </div>
               </Tooltip>
-            </CircleMarker>
+            </Marker>
           );
         })}
       </MapContainer>
