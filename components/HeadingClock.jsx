@@ -94,14 +94,11 @@ export default function HeadingClock({ headingDeg, cogDeg, size = 200 }) {
     <div
       style={{
         flex: "0 0 auto",
-        background: "linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
-        border: "1px solid rgba(126,171,200,0.18)",
-        borderRadius: 8,
-        padding: "12px 14px",
         display: "inline-flex",
         flexDirection: "column",
         alignItems: "center",
         gap: 6,
+        width: "100%",
       }}
     >
       <div style={{ fontSize: 9, letterSpacing: 2, color: "#7eabc8", textTransform: "uppercase" }}>
