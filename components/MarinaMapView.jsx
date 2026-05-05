@@ -97,6 +97,16 @@ function rotateBerthRows(layout, deg) {
   return next;
 }
 
+function orderedBerthSlots(layout) {
+  const out = [];
+  for (const sectionId of ["A", "B", "C"]) {
+    for (const pos of layout.berthPositions?.[sectionId] || []) {
+      out.push({ sectionId, pos });
+    }
+  }
+  return out;
+}
+
 export default function MarinaMapView({
   boats,
   selectedId,
@@ -125,11 +135,8 @@ export default function MarinaMapView({
   const windDirDeg = hasBoatWind ? marinaConditions.wind.direction_deg : weather?.winddirection;
   const windMs = hasBoatWind ? marinaConditions?.wind?.speed_ms : weather?.windspeed;
   const windKn = typeof windMs === "number" ? windMs * 1.94384 : null;
-  const bySection = {
-    A: boats.filter((b) => b.section === "A"),
-    B: boats.filter((b) => b.section === "B"),
-    C: boats.filter((b) => b.section === "C"),
-  };
+  const berthSlots = orderedBerthSlots(active);
+  const assignedBoats = active.reverseBoatOrder ? [...boats].reverse() : boats;
 
   return (
     <div
@@ -153,38 +160,35 @@ export default function MarinaMapView({
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        {(["A", "B", "C"]).flatMap((sectionId) => {
-          const sectionBoats = active.reverseBoatOrder ? [...bySection[sectionId]].reverse() : bySection[sectionId];
-          return sectionBoats.map((boat, idx) => {
-            const pos = active.berthPositions[sectionId][idx];
-            if (!pos) return null;
-            const isSelected = boat.id === selectedId;
-            const inQueue = queuedBoatIds.has(boat.id);
-            return (
-              <CircleMarker
-                key={keyFor(boat)}
-                center={pos}
-                radius={isSelected ? 9 : 7}
-                pathOptions={{
-                  color: isSelected ? "#f0c040" : "#e8f4f8",
-                  weight: isSelected ? 3 : 1.5,
-                  fillColor: boat.color,
-                  fillOpacity: 0.95,
-                }}
-                eventHandlers={{ click: () => onBoatSelect(boat.id) }}
-              >
-                <Tooltip direction="top" offset={[0, -6]}>
-                  <div style={{ fontSize: 11, fontWeight: "bold", letterSpacing: 0.5 }}>
-                    {boat.name}
-                  </div>
-                  <div style={{ fontSize: 10, opacity: 0.85 }}>
-                    Dock {sectionId}
-                    {inQueue ? " · in crane queue" : ""}
-                  </div>
-                </Tooltip>
-              </CircleMarker>
-            );
-          });
+        {berthSlots.map((slot, idx) => {
+          const boat = assignedBoats[idx];
+          if (!boat) return null;
+          const isSelected = boat.id === selectedId;
+          const inQueue = queuedBoatIds.has(boat.id);
+          return (
+            <CircleMarker
+              key={keyFor(boat)}
+              center={slot.pos}
+              radius={isSelected ? 9 : 7}
+              pathOptions={{
+                color: isSelected ? "#f0c040" : "#e8f4f8",
+                weight: isSelected ? 3 : 1.5,
+                fillColor: boat.color,
+                fillOpacity: 0.95,
+              }}
+              eventHandlers={{ click: () => onBoatSelect(boat.id) }}
+            >
+              <Tooltip direction="top" offset={[0, -6]}>
+                <div style={{ fontSize: 11, fontWeight: "bold", letterSpacing: 0.5 }}>
+                  {boat.name}
+                </div>
+                <div style={{ fontSize: 10, opacity: 0.85 }}>
+                  Dock {boat.section || slot.sectionId}
+                  {inQueue ? " · in crane queue" : ""}
+                </div>
+              </Tooltip>
+            </CircleMarker>
+          );
         })}
       </MapContainer>
 
