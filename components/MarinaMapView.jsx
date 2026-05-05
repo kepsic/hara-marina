@@ -427,13 +427,22 @@ function dockCenter(layout, dockId) {
   return averagePoint(points);
 }
 
+function bearingFromLine(start, end) {
+  const lat1 = (start[0] * Math.PI) / 180;
+  const lat2 = (end[0] * Math.PI) / 180;
+  const dLon = ((end[1] - start[1]) * Math.PI) / 180;
+  const y = Math.sin(dLon) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+  const deg = (Math.atan2(y, x) * 180) / Math.PI;
+  return (deg + 360) % 360;
+}
+
 function drawDockFromLine(layout, { start, end, name, berthMode, headingDeg, enabled, berthCount }) {
   const next = cloneLayout(layout);
   const docks = getDocks(next);
   const id = nextDockId(docks);
   const safeName = String(name || id).trim().slice(0, 24) || id;
   const safeMode = berthMode === "double" ? "double" : "single";
-  const safeHeading = normalizeDeg(headingDeg, 270);
   const safeEnabled = enabled !== false;
   const count = Math.max(1, Math.min(24, Number(berthCount) || 4));
   const s = [Number(start?.lat ?? start?.[0]), Number(start?.lng ?? start?.[1])];
@@ -443,6 +452,9 @@ function drawDockFromLine(layout, { start, end, name, berthMode, headingDeg, ena
   const fallbackEnd = shiftedPoint(s, -0.00012, 0.00018);
   const lineEnd = isTiny ? fallbackEnd : e;
   const lineVec = vectorBetween(lineEnd, s);
+  const safeHeading = Number.isFinite(Number(headingDeg))
+    ? normalizeDeg(headingDeg, 270)
+    : normalizeDeg(bearingFromLine(s, lineEnd) + 90, 270);
 
   const primaryCount = safeMode === "double" ? Math.ceil(count / 2) : count;
   const secondaryCount = safeMode === "double" ? Math.floor(count / 2) : 0;
@@ -511,8 +523,8 @@ export default function MarinaMapView({
   const [drawDockName, setDrawDockName] = useState("");
   const [drawDockModeSide, setDrawDockModeSide] = useState("single");
   const [drawDockBerthCount, setDrawDockBerthCount] = useState(4);
-  const [drawDockHeading, setDrawDockHeading] = useState(270);
-  const [drawDockEnabled, setDrawDockEnabled] = useState(true);
+  const [adminTab, setAdminTab] = useState("docks");
+  const [expandedDockId, setExpandedDockId] = useState(null);
 
   useEffect(() => {
     setDraft(layout || DEFAULT_LAYOUT);
@@ -605,6 +617,7 @@ export default function MarinaMapView({
 
   function selectDock(dockId) {
     setSelectedDockId(dockId);
+    setExpandedDockId(dockId);
     setTarget(`dock:${dockId}`);
     setHeadingTarget(`dock:${dockId}`);
   }
@@ -620,8 +633,6 @@ export default function MarinaMapView({
       end: latlng,
       name: drawDockName,
       berthMode: drawDockModeSide,
-      headingDeg: drawDockHeading,
-      enabled: drawDockEnabled,
       berthCount: drawDockBerthCount,
     });
     setDraft(created.layout);
@@ -870,326 +881,350 @@ export default function MarinaMapView({
 
           {editMode && (
             <>
-              <div style={{ fontSize: 10, marginBottom: 6 }}>Target</div>
-              <select
-                value={target}
-                onChange={(e) => setTarget(e.target.value)}
-                style={{ width: "100%", marginBottom: 8, background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
-              >
-                {targetOptions.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, marginBottom: 12, padding: 3, background: "rgba(0,0,0,0.25)", borderRadius: 6 }}>
+                {[
+                  { id: "boats", label: "Boats" },
+                  { id: "docks", label: "Docks" },
+                  { id: "move", label: "Move" },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setAdminTab(tab.id)}
+                    style={{
+                      cursor: "pointer",
+                      borderRadius: 4,
+                      border: "none",
+                      background: adminTab === tab.id ? "rgba(126,171,200,0.22)" : "transparent",
+                      color: adminTab === tab.id ? "#dcecf5" : "#7eabc8",
+                      padding: "5px 6px",
+                      fontSize: 10,
+                      letterSpacing: 0.8,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {tab.label}
+                  </button>
                 ))}
-              </select>
-
-              <div style={{ fontSize: 10, marginBottom: 6 }}>Boat order</div>
-              <div style={{ fontSize: 10, color: "#7eabc8", marginBottom: 8 }}>
-                Drag a boat row onto another row to move that boat to a different berth and dock.
               </div>
-              <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
-                {assignedBoats.map((boat, idx) => {
-                  const slot = berthSlots[idx];
-                  const isDragging = orderDragId === boat.id;
-                  const isOver = orderDragOverId === boat.id && orderDragId !== boat.id;
-                  return (
-                    <div
-                      key={boat.id}
-                      draggable
-                      onDragStart={(event) => onOrderDragStart(event, boat.id)}
-                      onDragOver={(event) => onOrderDragOver(event, boat.id)}
-                      onDrop={(event) => onOrderDrop(event, boat.id)}
-                      onDragEnd={onOrderDragEnd}
+
+              {adminTab === "boats" && (
+                <>
+                  <div style={{ fontSize: 10, color: "#7eabc8", marginBottom: 8 }}>
+                    Drag a row onto another row to swap boats between berths.
+                  </div>
+                  <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
+                    {assignedBoats.map((boat, idx) => {
+                      const slot = berthSlots[idx];
+                      const isDragging = orderDragId === boat.id;
+                      const isOver = orderDragOverId === boat.id && orderDragId !== boat.id;
+                      return (
+                        <div
+                          key={boat.id}
+                          draggable
+                          onDragStart={(event) => onOrderDragStart(event, boat.id)}
+                          onDragOver={(event) => onOrderDragOver(event, boat.id)}
+                          onDrop={(event) => onOrderDrop(event, boat.id)}
+                          onDragEnd={onOrderDragEnd}
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "22px 1fr auto",
+                            gap: 8,
+                            alignItems: "center",
+                            padding: "7px 8px",
+                            borderRadius: 6,
+                            border: isOver ? "1px solid rgba(240,192,64,0.7)" : "1px solid rgba(126,171,200,0.2)",
+                            background: isOver ? "rgba(240,192,64,0.12)" : "rgba(255,255,255,0.04)",
+                            opacity: isDragging ? 0.45 : 1,
+                            cursor: "grab",
+                          }}
+                        >
+                          <div style={{ color: "#7eabc8", fontSize: 15, lineHeight: 1, textAlign: "center" }}>⋮⋮</div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 11, color: "#dcecf5", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              {boat.name}
+                            </div>
+                            <div style={{ fontSize: 9, color: "#7eabc8", letterSpacing: 0.8, textTransform: "uppercase" }}>
+                              {slot ? `Dock ${slot.dockName} · ${slot.label}` : "Unassigned"}
+                            </div>
+                          </div>
+                          <div style={{ width: 10, height: 10, borderRadius: 999, background: boat.color, boxShadow: "0 0 0 1px rgba(255,255,255,0.18)" }} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+
+              {adminTab === "docks" && (
+                <>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 6, marginBottom: 8 }}>
+                    <select
+                      value={selectedDockId || ""}
+                      onChange={(e) => selectDock(e.target.value)}
+                      style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
+                    >
+                      {docks.map((dock) => (
+                        <option key={dock.id} value={dock.id}>Dock {dock.name || dock.id}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => {
+                        setDrawDockMode((value) => !value);
+                        setDrawDockStart(null);
+                      }}
                       style={{
-                        display: "grid",
-                        gridTemplateColumns: "22px 1fr auto",
-                        gap: 8,
-                        alignItems: "center",
-                        padding: "7px 8px",
-                        borderRadius: 6,
-                        border: isOver ? "1px solid rgba(240,192,64,0.7)" : "1px solid rgba(126,171,200,0.2)",
-                        background: isOver ? "rgba(240,192,64,0.12)" : "rgba(255,255,255,0.04)",
-                        opacity: isDragging ? 0.45 : 1,
-                        cursor: "grab",
+                        cursor: "pointer",
+                        borderRadius: 4,
+                        border: "1px solid rgba(126,171,200,0.25)",
+                        background: drawDockMode ? "rgba(240,192,64,0.2)" : "rgba(255,255,255,0.05)",
+                        color: drawDockMode ? "#f0c040" : "#dcecf5",
+                        padding: "4px 8px",
+                        fontSize: 10,
                       }}
                     >
-                      <div style={{ color: "#7eabc8", fontSize: 15, lineHeight: 1, textAlign: "center" }}>⋮⋮</div>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 11, color: "#dcecf5", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {boat.name}
-                        </div>
-                        <div style={{ fontSize: 9, color: "#7eabc8", letterSpacing: 0.8, textTransform: "uppercase" }}>
-                          {slot ? `Dock ${slot.dockName} · ${slot.label}` : "Unassigned"}
-                        </div>
+                      {drawDockMode ? "Cancel" : "Draw"}
+                    </button>
+                    <button
+                      onClick={() => setDraft((current) => addDock(current || active))}
+                      style={{ cursor: "pointer", borderRadius: 4, border: "1px solid rgba(126,171,200,0.25)", background: "rgba(255,255,255,0.05)", color: "#dcecf5", padding: "4px 8px", fontSize: 10 }}
+                    >
+                      + New
+                    </button>
+                  </div>
+
+                  {drawDockMode && (
+                    <div style={{ border: "1px solid rgba(240,192,64,0.4)", background: "rgba(240,192,64,0.08)", borderRadius: 6, padding: 8, marginBottom: 10 }}>
+                      <div style={{ fontSize: 10, color: "#f0c040", marginBottom: 6 }}>
+                        {drawDockStart ? "Click second point on map to finish." : "Click start point on map."}
                       </div>
-                      <div style={{ width: 10, height: 10, borderRadius: 999, background: boat.color, boxShadow: "0 0 0 1px rgba(255,255,255,0.18)" }} />
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                <div style={{ fontSize: 10 }}>Docks and berths</div>
-                <button
-                  onClick={() => setDraft((current) => addDock(current || active))}
-                  style={{ cursor: "pointer", borderRadius: 4, border: "1px solid rgba(126,171,200,0.25)", background: "rgba(255,255,255,0.05)", color: "#dcecf5", padding: "4px 8px", fontSize: 10 }}
-                >
-                  + Add dock
-                </button>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, marginBottom: 8 }}>
-                <select
-                  value={selectedDockId || ""}
-                  onChange={(e) => selectDock(e.target.value)}
-                  style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
-                >
-                  {docks.map((dock) => (
-                    <option key={dock.id} value={dock.id}>Select Dock {dock.name || dock.id}</option>
-                  ))}
-                </select>
-                <button
-                  onClick={() => {
-                    setDrawDockMode((value) => !value);
-                    setDrawDockStart(null);
-                  }}
-                  style={{
-                    cursor: "pointer",
-                    borderRadius: 4,
-                    border: "1px solid rgba(126,171,200,0.25)",
-                    background: drawDockMode ? "rgba(240,192,64,0.2)" : "rgba(255,255,255,0.05)",
-                    color: drawDockMode ? "#f0c040" : "#dcecf5",
-                    padding: "4px 8px",
-                    fontSize: 10,
-                  }}
-                >
-                  {drawDockMode ? "Cancel draw" : "Draw dock"}
-                </button>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 10 }}>
-                <input
-                  value={drawDockName}
-                  onChange={(e) => setDrawDockName(e.target.value.slice(0, 24))}
-                  placeholder="New dock name"
-                  style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
-                />
-                <select
-                  value={drawDockModeSide}
-                  onChange={(e) => setDrawDockModeSide(e.target.value)}
-                  style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
-                >
-                  <option value="single">One-sided</option>
-                  <option value="double">Two-sided</option>
-                </select>
-                <input
-                  type="number"
-                  min="1"
-                  max="24"
-                  value={drawDockBerthCount}
-                  onChange={(e) => setDrawDockBerthCount(Math.max(1, Math.min(24, Number(e.target.value) || 1)))}
-                  placeholder="Initial berths"
-                  style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
-                />
-                <input
-                  type="number"
-                  min="0"
-                  max="359"
-                  value={drawDockHeading}
-                  onChange={(e) => setDrawDockHeading(normalizeDeg(e.target.value, 270))}
-                  placeholder="Heading"
-                  style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
-                />
-                <label style={{ fontSize: 10, color: "#7eabc8", display: "flex", alignItems: "center", gap: 6 }}>
-                  <input
-                    type="checkbox"
-                    checked={drawDockEnabled}
-                    onChange={(e) => setDrawDockEnabled(e.target.checked)}
-                  />
-                  New dock enabled
-                </label>
-              </div>
-              <div style={{ fontSize: 10, color: "#7eabc8", marginBottom: 10 }}>
-                Draw dock: click Draw dock, then click start and end points on the map. You can also click any dock bubble on map to select it, then edit details below.
-              </div>
-
-              <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
-                {docks.map((dock) => {
-                  const dockBerths = berths.filter((berth) => berth.dockId === dock.id);
-                  return (
-                    <div key={dock.id} style={{ border: "1px solid rgba(126,171,200,0.18)", borderRadius: 6, padding: 8, background: "rgba(255,255,255,0.03)" }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 88px", gap: 6, marginBottom: 6 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 70px", gap: 6 }}>
                         <input
-                          value={dock.name || ""}
-                          onChange={(e) => setDraft((current) => updateDockField(current || active, dock.id, { name: e.target.value.slice(0, 24) || dock.id }))}
-                          placeholder="Dock name"
+                          value={drawDockName}
+                          onChange={(e) => setDrawDockName(e.target.value.slice(0, 24))}
+                          placeholder="Dock name (optional)"
                           style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
                         />
                         <select
-                          value={dock.berthMode || "single"}
-                          onChange={(e) => setDraft((current) => updateDockField(current || active, dock.id, { berthMode: e.target.value }))}
+                          value={drawDockModeSide}
+                          onChange={(e) => setDrawDockModeSide(e.target.value)}
                           style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
                         >
                           <option value="single">One-sided</option>
                           <option value="double">Two-sided</option>
                         </select>
-                        <button
-                          onClick={() => setDraft((current) => removeDock(current || active, dock.id))}
-                          style={{ cursor: "pointer", borderRadius: 4, border: "1px solid rgba(224,128,64,0.35)", background: "rgba(224,128,64,0.12)", color: "#e8b090" }}
-                        >
-                          Remove
-                        </button>
-                      </div>
-
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 6, marginBottom: 8, alignItems: "center" }}>
-                        <label style={{ fontSize: 10, color: "#7eabc8" }}>
-                          Heading
-                          <input
-                            type="number"
-                            value={dock.headingDeg ?? 270}
-                            onChange={(e) => setDraft((current) => updateDockField(current || active, dock.id, { headingDeg: normalizeDeg(e.target.value) }))}
-                            style={{ width: "100%", background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
-                          />
-                        </label>
-                        <label style={{ fontSize: 10, color: "#7eabc8", display: "flex", alignItems: "center", gap: 6, marginTop: 12 }}>
-                          <input
-                            type="checkbox"
-                            checked={dock.enabled !== false}
-                            onChange={(e) => setDraft((current) => updateDockField(current || active, dock.id, { enabled: e.target.checked }))}
-                          />
-                          Enabled
-                        </label>
-                        <div />
-                        <button
-                          onClick={() => setDraft((current) => addBerth(current || active, dock.id))}
-                          style={{ cursor: "pointer", borderRadius: 4, border: "1px solid rgba(126,171,200,0.25)", background: "rgba(255,255,255,0.05)", color: "#dcecf5", padding: "6px 8px", fontSize: 10, alignSelf: "end" }}
-                        >
-                          + Add berth
-                        </button>
-                      </div>
-
-                      <div style={{ display: "grid", gap: 6 }}>
-                        {dockBerths.map((berth) => (
-                          <div key={berth.id} style={{ borderTop: "1px solid rgba(126,171,200,0.12)", paddingTop: 6, display: "grid", gap: 6 }}>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 110px 110px 74px", gap: 6 }}>
-                              <input
-                                value={berth.label || ""}
-                                onChange={(e) => setDraft((current) => updateBerthField(current || active, berth.id, { label: e.target.value.slice(0, 24) || berth.id }))}
-                                placeholder="Berth label"
-                                style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
-                              />
-                              <select
-                                value={berth.side || "primary"}
-                                disabled={dock.berthMode !== "double"}
-                                onChange={(e) => setDraft((current) => updateBerthField(current || active, berth.id, { side: e.target.value }))}
-                                style={{ background: "#102537", color: dock.berthMode !== "double" ? "#6a8395" : "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
-                              >
-                                <option value="primary">Near side</option>
-                                <option value="secondary">Far side</option>
-                              </select>
-                              <input
-                                type="number"
-                                placeholder="Heading"
-                                value={berth.headingDeg ?? ""}
-                                onChange={(e) => setDraft((current) => updateBerthField(current || active, berth.id, { headingDeg: e.target.value === "" ? null : normalizeDeg(e.target.value) }))}
-                                style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
-                              />
-                              <button
-                                onClick={() => setDraft((current) => removeBerth(current || active, berth.id))}
-                                style={{ cursor: "pointer", borderRadius: 4, border: "1px solid rgba(224,128,64,0.35)", background: "rgba(224,128,64,0.12)", color: "#e8b090" }}
-                              >
-                                Remove
-                              </button>
-                            </div>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                              <label style={{ fontSize: 10, color: "#7eabc8", display: "flex", alignItems: "center", gap: 6 }}>
-                                <input
-                                  type="checkbox"
-                                  checked={berth.enabled !== false}
-                                  onChange={(e) => setDraft((current) => updateBerthField(current || active, berth.id, { enabled: e.target.checked }))}
-                                />
-                                Enabled
-                              </label>
-                              <div style={{ fontSize: 10, color: "#7eabc8" }}>Target key: {berth.label || berth.id}</div>
-                            </div>
-                          </div>
-                        ))}
+                        <input
+                          type="number"
+                          min="1"
+                          max="24"
+                          value={drawDockBerthCount}
+                          onChange={(e) => setDrawDockBerthCount(Math.max(1, Math.min(24, Number(e.target.value) || 1)))}
+                          title="Number of berths"
+                          style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
+                        />
                       </div>
                     </div>
-                  );
-                })}
-              </div>
+                  )}
 
-              <div style={{ fontSize: 10, marginBottom: 6 }}>Boat orientation</div>
-              <select
-                value={headingTarget}
-                onChange={(e) => setHeadingTarget(e.target.value)}
-                style={{ width: "100%", marginBottom: 8, background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
-              >
-                {headingOptions.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
+                  {(() => {
+                    const dock = docks.find((d) => d.id === selectedDockId) || docks[0];
+                    if (!dock) {
+                      return <div style={{ fontSize: 10, color: "#7eabc8" }}>No docks. Use Draw or + New to create one.</div>;
+                    }
+                    const dockBerths = berths.filter((berth) => berth.dockId === dock.id);
+                    const isExpanded = expandedDockId === dock.id;
+                    return (
+                      <div style={{ border: "1px solid rgba(126,171,200,0.18)", borderRadius: 6, padding: 8, background: "rgba(255,255,255,0.03)", marginBottom: 8 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 110px", gap: 6, marginBottom: 6 }}>
+                          <input
+                            value={dock.name || ""}
+                            onChange={(e) => setDraft((current) => updateDockField(current || active, dock.id, { name: e.target.value.slice(0, 24) || dock.id }))}
+                            placeholder="Dock name"
+                            style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
+                          />
+                          <select
+                            value={dock.berthMode || "single"}
+                            onChange={(e) => setDraft((current) => updateDockField(current || active, dock.id, { berthMode: e.target.value }))}
+                            style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
+                          >
+                            <option value="single">One-sided</option>
+                            <option value="double">Two-sided</option>
+                          </select>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8, fontSize: 10, color: "#7eabc8" }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={dock.enabled !== false}
+                              onChange={(e) => setDraft((current) => updateDockField(current || active, dock.id, { enabled: e.target.checked }))}
+                            />
+                            Enabled
+                          </label>
+                          <span>Heading {Math.round(dock.headingDeg ?? 270)}°</span>
+                          <span>{dockBerths.length} berth{dockBerths.length === 1 ? "" : "s"}</span>
+                        </div>
 
-              {headingTarget === "boat" && (
-                <select
-                  value={headingBoatId ?? ""}
-                  onChange={(e) => setHeadingBoatId(Number(e.target.value))}
-                  style={{ width: "100%", marginBottom: 8, background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
-                >
-                  {boats.map((boat) => (
-                    <option key={boat.id} value={boat.id}>{boat.name}</option>
-                  ))}
-                </select>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                          <button
+                            onClick={() => setExpandedDockId(isExpanded ? null : dock.id)}
+                            style={{ background: "transparent", border: "none", color: "#7eabc8", cursor: "pointer", fontSize: 10, padding: 0 }}
+                          >
+                            {isExpanded ? "▾ Hide berths" : "▸ Show berths"}
+                          </button>
+                          <button
+                            onClick={() => setDraft((current) => addBerth(current || active, dock.id))}
+                            style={{ cursor: "pointer", borderRadius: 4, border: "1px solid rgba(126,171,200,0.25)", background: "rgba(255,255,255,0.05)", color: "#dcecf5", padding: "3px 7px", fontSize: 10 }}
+                          >
+                            + Berth
+                          </button>
+                        </div>
+
+                        {isExpanded && (
+                          <div style={{ display: "grid", gap: 4 }}>
+                            {dockBerths.map((berth) => (
+                              <div key={berth.id} style={{ display: "grid", gridTemplateColumns: "1fr 80px 60px auto", gap: 4, alignItems: "center" }}>
+                                <input
+                                  value={berth.label || ""}
+                                  onChange={(e) => setDraft((current) => updateBerthField(current || active, berth.id, { label: e.target.value.slice(0, 24) || berth.id }))}
+                                  placeholder="Label"
+                                  style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4, fontSize: 10, padding: "3px 5px" }}
+                                />
+                                <select
+                                  value={berth.side || "primary"}
+                                  disabled={dock.berthMode !== "double"}
+                                  onChange={(e) => setDraft((current) => updateBerthField(current || active, berth.id, { side: e.target.value }))}
+                                  style={{ background: "#102537", color: dock.berthMode !== "double" ? "#6a8395" : "#dcecf5", border: "1px solid #36566b", borderRadius: 4, fontSize: 10 }}
+                                >
+                                  <option value="primary">Near</option>
+                                  <option value="secondary">Far</option>
+                                </select>
+                                <label style={{ fontSize: 10, color: "#7eabc8", display: "flex", alignItems: "center", gap: 4, justifyContent: "center" }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={berth.enabled !== false}
+                                    onChange={(e) => setDraft((current) => updateBerthField(current || active, berth.id, { enabled: e.target.checked }))}
+                                  />
+                                  On
+                                </label>
+                                <button
+                                  onClick={() => setDraft((current) => removeBerth(current || active, berth.id))}
+                                  style={{ cursor: "pointer", borderRadius: 4, border: "1px solid rgba(224,128,64,0.35)", background: "rgba(224,128,64,0.12)", color: "#e8b090", padding: "3px 6px", fontSize: 10 }}
+                                  title="Remove berth"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+                          <button
+                            onClick={() => {
+                              if (typeof window !== "undefined" && !window.confirm(`Remove dock ${dock.name || dock.id} and its ${dockBerths.length} berth(s)?`)) return;
+                              setDraft((current) => removeDock(current || active, dock.id));
+                            }}
+                            style={{ cursor: "pointer", borderRadius: 4, border: "1px solid rgba(224,128,64,0.35)", background: "rgba(224,128,64,0.12)", color: "#e8b090", padding: "4px 8px", fontSize: 10 }}
+                          >
+                            Remove dock
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </>
               )}
 
-              <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-                <input
-                  type="number"
-                  step="1"
-                  min="1"
-                  max="90"
-                  value={headingStepDeg}
-                  onChange={(e) => setHeadingStepDeg(Math.max(1, Math.min(90, Number(e.target.value) || 5)))}
-                  style={{ flex: 1, background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
-                />
-                <button onClick={() => setDraft((current) => updateHeading(current || active, headingTarget, -headingStepDeg, headingBoatId))} style={{ cursor: "pointer" }}>-deg</button>
-                <button onClick={() => setDraft((current) => updateHeading(current || active, headingTarget, headingStepDeg, headingBoatId))} style={{ cursor: "pointer" }}>+deg</button>
-              </div>
+              {adminTab === "move" && (
+                <>
+                  <div style={{ fontSize: 10, marginBottom: 6, color: "#7eabc8" }}>What to move</div>
+                  <select
+                    value={target}
+                    onChange={(e) => setTarget(e.target.value)}
+                    style={{ width: "100%", marginBottom: 10, background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
+                  >
+                    {targetOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
 
-              <div style={{ fontSize: 10, marginBottom: 6 }}>Berth row angle</div>
-              <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-                <input
-                  type="number"
-                  step="0.5"
-                  min="0.5"
-                  max="45"
-                  value={rotDeg}
-                  onChange={(e) => setRotDeg(Math.max(0.5, Math.min(45, Number(e.target.value) || 2)))}
-                  style={{ flex: 1, background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
-                />
-                <button onClick={() => setDraft((current) => rotateBerthRows(current || active, target, -rotDeg))} style={{ cursor: "pointer" }}>-deg</button>
-                <button onClick={() => setDraft((current) => rotateBerthRows(current || active, target, rotDeg))} style={{ cursor: "pointer" }}>+deg</button>
-              </div>
+                  <div style={{ fontSize: 10, marginBottom: 6, color: "#7eabc8" }}>Step size</div>
+                  <select
+                    value={String(stepDeg)}
+                    onChange={(e) => setStepDeg(Number(e.target.value))}
+                    style={{ width: "100%", marginBottom: 8, background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
+                  >
+                    <option value="0.00002">Small (~2 m)</option>
+                    <option value="0.00005">Medium (~5 m)</option>
+                    <option value="0.0001">Large (~11 m)</option>
+                  </select>
 
-              <div style={{ fontSize: 10, marginBottom: 6 }}>Step</div>
-              <select
-                value={String(stepDeg)}
-                onChange={(e) => setStepDeg(Number(e.target.value))}
-                style={{ width: "100%", marginBottom: 10, background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
-              >
-                <option value="0.00002">Small (~2 m)</option>
-                <option value="0.00005">Medium (~5 m)</option>
-                <option value="0.0001">Large (~11 m)</option>
-              </select>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 12 }}>
+                    <div />
+                    <button onClick={() => setDraft((current) => shiftLayout(current || active, target, stepDeg, 0))} style={{ cursor: "pointer" }}>N</button>
+                    <div />
+                    <button onClick={() => setDraft((current) => shiftLayout(current || active, target, 0, -stepDeg))} style={{ cursor: "pointer" }}>W</button>
+                    <button onClick={() => setDraft(layout || DEFAULT_LAYOUT)} style={{ cursor: "pointer" }}>Reset</button>
+                    <button onClick={() => setDraft((current) => shiftLayout(current || active, target, 0, stepDeg))} style={{ cursor: "pointer" }}>E</button>
+                    <div />
+                    <button onClick={() => setDraft((current) => shiftLayout(current || active, target, -stepDeg, 0))} style={{ cursor: "pointer" }}>S</button>
+                    <div />
+                  </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 10 }}>
-                <div />
-                <button onClick={() => setDraft((current) => shiftLayout(current || active, target, stepDeg, 0))} style={{ cursor: "pointer" }}>N</button>
-                <div />
-                <button onClick={() => setDraft((current) => shiftLayout(current || active, target, 0, -stepDeg))} style={{ cursor: "pointer" }}>W</button>
-                <button onClick={() => setDraft(layout || DEFAULT_LAYOUT)} style={{ cursor: "pointer" }}>Reset</button>
-                <button onClick={() => setDraft((current) => shiftLayout(current || active, target, 0, stepDeg))} style={{ cursor: "pointer" }}>E</button>
-                <div />
-                <button onClick={() => setDraft((current) => shiftLayout(current || active, target, -stepDeg, 0))} style={{ cursor: "pointer" }}>S</button>
-                <div />
-              </div>
+                  <div style={{ fontSize: 10, marginBottom: 6, color: "#7eabc8" }}>Rotate berth row</div>
+                  <div style={{ display: "flex", gap: 6, marginBottom: 12, alignItems: "center" }}>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0.5"
+                      max="45"
+                      value={rotDeg}
+                      onChange={(e) => setRotDeg(Math.max(0.5, Math.min(45, Number(e.target.value) || 2)))}
+                      style={{ flex: 1, background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
+                    />
+                    <button onClick={() => setDraft((current) => rotateBerthRows(current || active, target, -rotDeg))} style={{ cursor: "pointer" }}>−°</button>
+                    <button onClick={() => setDraft((current) => rotateBerthRows(current || active, target, rotDeg))} style={{ cursor: "pointer" }}>+°</button>
+                  </div>
+
+                  <div style={{ fontSize: 10, marginBottom: 6, color: "#7eabc8" }}>Boat orientation</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 8 }}>
+                    <select
+                      value={headingTarget}
+                      onChange={(e) => setHeadingTarget(e.target.value)}
+                      style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
+                    >
+                      {headingOptions.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                    {headingTarget === "boat" ? (
+                      <select
+                        value={headingBoatId ?? ""}
+                        onChange={(e) => setHeadingBoatId(Number(e.target.value))}
+                        style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
+                      >
+                        {boats.map((boat) => (
+                          <option key={boat.id} value={boat.id}>{boat.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div />
+                    )}
+                  </div>
+                  <div style={{ display: "flex", gap: 6, marginBottom: 12, alignItems: "center" }}>
+                    <input
+                      type="number"
+                      step="1"
+                      min="1"
+                      max="90"
+                      value={headingStepDeg}
+                      onChange={(e) => setHeadingStepDeg(Math.max(1, Math.min(90, Number(e.target.value) || 5)))}
+                      style={{ flex: 1, background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
+                    />
+                    <button onClick={() => setDraft((current) => updateHeading(current || active, headingTarget, -headingStepDeg, headingBoatId))} style={{ cursor: "pointer" }}>−°</button>
+                    <button onClick={() => setDraft((current) => updateHeading(current || active, headingTarget, headingStepDeg, headingBoatId))} style={{ cursor: "pointer" }}>+°</button>
+                  </div>
+                </>
+              )}
 
               <button
                 disabled={saving}
@@ -1208,9 +1243,11 @@ export default function MarinaMapView({
                   border: "1px solid rgba(42,154,74,0.45)",
                   color: "#b8efcc",
                   borderRadius: 5,
-                  padding: "7px 8px",
+                  padding: "8px 8px",
                   cursor: "pointer",
                   fontSize: 11,
+                  fontWeight: 600,
+                  letterSpacing: 0.6,
                 }}
               >
                 {saving ? "Saving..." : "Save layout"}
