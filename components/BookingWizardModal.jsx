@@ -129,7 +129,8 @@ export default function BookingWizardModal({ open, onClose, slot, marinaSlug, on
         {submittedBooking ? (
           <div>
             <div style={{ background: "rgba(80,200,120,0.15)", border: "1px solid rgba(80,200,120,0.4)", padding: 12, borderRadius: 8, marginBottom: 12 }}>
-              <b>Booking received.</b> Confirmation sent to {submittedBooking.email}. The harbor master will approve it shortly.
+              <b>Booking request received.</b> A receipt was sent to <b>{submittedBooking.email}</b>.
+              The harbor master will review and confirm shortly — you'll get a second email with arrival instructions, the harbor master's phone number, and payment details.
             </div>
             <div style={{ fontSize: 13, color: "#7eabc8" }}>
               Reference: <code>{submittedBooking.id}</code>
@@ -237,7 +238,10 @@ export default function BookingWizardModal({ open, onClose, slot, marinaSlug, on
                 {notes && <div><b>Notes:</b> {notes}</div>}
                 <div style={{ background: "rgba(31,111,168,0.15)", border: "1px solid rgba(31,111,168,0.4)", padding: 10, borderRadius: 8 }}>
                   Total: <b>{quote ? `${(quote.totalCents / 100).toFixed(2)} ${quote.currency}` : "—"}</b>{" "}
-                  <span style={{ color: "#7eabc8", fontSize: 11 }}>(payment collected on arrival)</span>
+                  <span style={{ color: "#7eabc8", fontSize: 11 }}>(electricity included)</span>
+                  <div style={{ color: "#7eabc8", fontSize: 11, marginTop: 4 }}>
+                    Pay at the harbour shop on arrival, or by bank transfer — details will be in your confirmation email.
+                  </div>
                 </div>
                 <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
                   <input type="checkbox" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
