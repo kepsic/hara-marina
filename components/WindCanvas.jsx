@@ -6,12 +6,11 @@ import { useEffect, useRef } from "react";
  * Particles drift downwind across the marina. Speed scales with the live wind
  * speed (m/s); particle density and brightness scale with gust strength.
  *
- * Coordinate convention matches the WindRose on this page: N is to the LEFT
- * of the screen, S to the right, E up, W down. So a wind FROM south (180°)
- * blows leftward across the canvas — which matches what the user sees on
- * the marina map (south = docks = right side).
+ * orientation="marina": rotated house style used on the sketch landing tab
+ *   where N is LEFT, S is RIGHT, E is UP, W is DOWN.
+ * orientation="map": true north-up map orientation where N is UP and E is RIGHT.
  */
-export default function WindCanvas({ dir, speed, gust }) {
+export default function WindCanvas({ dir, speed, gust, orientation = "marina" }) {
   const ref = useRef(null);
   const stateRef = useRef({ particles: [], lastT: 0 });
 
@@ -60,9 +59,13 @@ export default function WindCanvas({ dir, speed, gust }) {
       const hasWind = typeof dir === "number" && typeof speed === "number" && speed > 0;
       // downwind bearing: where the wind is GOING (= dir + 180)
       const toDeg = hasWind ? (dir + 180) % 360 : 0;
-      // Same screen mapping as WindRose: N=left, E=top.
-      const sx = -Math.cos(toDeg * Math.PI / 180);
-      const sy = -Math.sin(toDeg * Math.PI / 180);
+      let sx = -Math.cos(toDeg * Math.PI / 180);
+      let sy = -Math.sin(toDeg * Math.PI / 180);
+      if (orientation === "map") {
+        // Standard map screen axes: north is up, east is right.
+        sx = Math.sin(toDeg * Math.PI / 180);
+        sy = -Math.cos(toDeg * Math.PI / 180);
+      }
       // Speed scaling: ~25 px/s per m/s of wind, capped.
       const pxPerSec = Math.min(220, (speed || 0) * 25);
       const vx = sx * pxPerSec;
@@ -120,7 +123,7 @@ export default function WindCanvas({ dir, speed, gust }) {
       cancelAnimationFrame(raf);
       ro.disconnect();
     };
-  }, [dir, speed, gust]);
+  }, [dir, speed, gust, orientation]);
 
   return (
     <canvas

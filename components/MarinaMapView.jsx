@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip } from "react-leaflet";
 import BoatWindRose from "./BoatWindRose";
+import WindCanvas from "./WindCanvas";
 
 const DEFAULT_LAYOUT = {
   center: [59.5881254, 25.6124356],
@@ -207,6 +208,13 @@ export default function MarinaMapView({
           <Tooltip>Fuel dock</Tooltip>
         </CircleMarker>
       </MapContainer>
+
+      <WindCanvas
+        dir={windDirDeg}
+        speed={windMs}
+        gust={hasBoatWind ? null : weather?.windspeedmax}
+        orientation="map"
+      />
 
       <div
         style={{
