@@ -21,6 +21,17 @@ export default function ShareModal({
 }) {
   const [copied, setCopied] = useState("");
   const [qrUrl, setQrUrl] = useState("");
+  const [narrow, setNarrow] = useState(false);
+
+  // Track viewport width so the modal can stack on small screens.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 600px)");
+    const apply = () => setNarrow(mq.matches);
+    apply();
+    mq.addEventListener?.("change", apply);
+    return () => mq.removeEventListener?.("change", apply);
+  }, []);
 
   // Determine which URL we share: prefer the freshly-created URL, otherwise the public boat URL.
   const publicUrl = useMemo(() => {
@@ -88,15 +99,21 @@ export default function ShareModal({
 
   return (
     <ModalShell title={`🔗 Share · ${boatName || slug}`} onClose={onClose}>
-      <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 18, alignItems: "start" }}>
-        <div>
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: narrow ? "1fr" : "minmax(0, 240px) minmax(0, 1fr)",
+        gap: 18, alignItems: "start",
+        justifyItems: narrow ? "center" : "stretch",
+      }}>
+        <div style={{ width: "100%", maxWidth: 260 }}>
           <div style={{
             background: "#e8f4f8", borderRadius: 8, padding: 8,
             display: "flex", alignItems: "center", justifyContent: "center",
-            minHeight: 240, minWidth: 240,
+            aspectRatio: "1 / 1", width: "100%",
           }}>
             {qrUrl
-              ? <img src={qrUrl} alt={`QR for ${publicUrl}`} width={224} height={224} />
+              ? <img src={qrUrl} alt={`QR for ${publicUrl}`}
+                     style={{ width: "100%", height: "auto", maxWidth: 224 }} />
               : <span style={{ fontSize: 11, color: "#5a8aaa" }}>generating QR…</span>}
           </div>
           <div style={{
@@ -107,7 +124,7 @@ export default function ShareModal({
           </div>
         </div>
 
-        <div>
+        <div style={{ width: "100%", minWidth: 0 }}>
           <div style={{
             fontSize: 9, letterSpacing: 2, color: "#7eabc8",
             textTransform: "uppercase", marginBottom: 6,
