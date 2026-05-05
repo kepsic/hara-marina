@@ -183,7 +183,7 @@ export default function MarinaMapView({
                   {boat.name}
                 </div>
                 <div style={{ fontSize: 10, opacity: 0.85 }}>
-                  Dock {boat.section || slot.sectionId}
+                  Dock {slot.sectionId}
                   {inQueue ? " · in crane queue" : ""}
                 </div>
               </Tooltip>
