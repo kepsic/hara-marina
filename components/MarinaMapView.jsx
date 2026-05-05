@@ -1,8 +1,53 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { divIcon } from "leaflet";
 import { MapContainer, TileLayer, Marker, Tooltip, useMapEvents } from "react-leaflet";
 import BoatWindRose from "./BoatWindRose";
 import WindCanvas from "./WindCanvas";
+
+const DEFAULT_BERTH_POINTS = {
+  A: [
+    [59.5882254, 25.6123156],
+    [59.5881654, 25.6124356],
+    [59.5881054, 25.6125556],
+  ],
+  B: [
+    [59.5880454, 25.6126756],
+    [59.5879854, 25.6127956],
+    [59.5879254, 25.6129156],
+    [59.5878654, 25.6130356],
+  ],
+  C: [
+    [59.5878054, 25.6131556],
+    [59.5877454, 25.6132756],
+    [59.5876854, 25.6133956],
+    [59.5876254, 25.6135156],
+    [59.5875654, 25.6136356],
+  ],
+};
+
+function createDefaultDocks() {
+  return ["A", "B", "C"].map((id) => ({
+    id,
+    name: id,
+    berthMode: "single",
+    enabled: true,
+    headingDeg: 270,
+  }));
+}
+
+function createDefaultBerths() {
+  return Object.entries(DEFAULT_BERTH_POINTS).flatMap(([dockId, points]) => (
+    points.map((pos, index) => ({
+      id: `${dockId}-${index + 1}`,
+      dockId,
+      label: `${dockId}${index + 1}`,
+      side: "primary",
+      enabled: true,
+      pos,
+      headingDeg: null,
+    }))
+  ));
+}
 
 const DEFAULT_LAYOUT = {
   center: [59.5881254, 25.6124356],
@@ -20,34 +65,16 @@ const DEFAULT_LAYOUT = {
       [59.5886454, 25.6132856],
     ],
   ],
-  berthPositions: {
-    A: [
-      [59.5882254, 25.6123156],
-      [59.5881654, 25.6124356],
-      [59.5881054, 25.6125556],
-    ],
-    B: [
-      [59.5880454, 25.6126756],
-      [59.5879854, 25.6127956],
-      [59.5879254, 25.6129156],
-      [59.5878654, 25.6130356],
-    ],
-    C: [
-      [59.5878054, 25.6131556],
-      [59.5877454, 25.6132756],
-      [59.5876854, 25.6133956],
-      [59.5876254, 25.6135156],
-      [59.5875654, 25.6136356],
-    ],
-  },
+  docks: createDefaultDocks(),
+  berths: createDefaultBerths(),
   fuelDock: [59.5884654, 25.6129156],
   reverseBoatOrder: false,
-  dockHeadingDeg: { A: 270, B: 270, C: 270 },
+  boatOrder: null,
   boatHeadingOverrides: {},
 };
 
 function keyFor(boat) {
-  return `${boat.section}-${boat.id}`;
+  return `boat-${boat.id}`;
 }
 
 function cloneLayout(layout) {
@@ -58,21 +85,18 @@ function shiftedPoint(point, dLat, dLon) {
   return [point[0] + dLat, point[1] + dLon];
 }
 
-function shiftLayout(layout, target, dLat, dLon) {
-  const next = cloneLayout(layout);
-  const shiftArray = (arr) => arr.map((p) => shiftedPoint(p, dLat, dLon));
+function shiftMeters(point, northMeters, eastMeters) {
+  const lat = Number(point?.[0]) || DEFAULT_LAYOUT.center[0];
+  const lon = Number(point?.[1]) || DEFAULT_LAYOUT.center[1];
+  const dLat = northMeters / 111320;
+  const dLon = eastMeters / (111320 * Math.cos((lat * Math.PI) / 180));
+  return [lat + dLat, lon + dLon];
+}
 
-  if (target === "center") next.center = shiftedPoint(next.center, dLat, dLon);
-  if (target === "piers") next.pierLines = next.pierLines.map((line) => shiftArray(line));
-  if (target === "berths-all") {
-    for (const k of ["A", "B", "C"]) next.berthPositions[k] = shiftArray(next.berthPositions[k]);
-  }
-  if (target === "berths-A") next.berthPositions.A = shiftArray(next.berthPositions.A);
-  if (target === "berths-B") next.berthPositions.B = shiftArray(next.berthPositions.B);
-  if (target === "berths-C") next.berthPositions.C = shiftArray(next.berthPositions.C);
-  if (target === "fuel") next.fuelDock = shiftedPoint(next.fuelDock, dLat, dLon);
-
-  return next;
+function normalizeDeg(value, fallback = 270) {
+  const deg = Number(value);
+  if (!Number.isFinite(deg)) return fallback;
+  return (((deg % 360) + 360) % 360);
 }
 
 function rotatePoint([lat, lon], [aLat, aLon], deg) {
@@ -84,62 +108,132 @@ function rotatePoint([lat, lon], [aLat, aLon], deg) {
   return [aLat + rLat, aLon + rLon];
 }
 
-function rotateBerthRows(layout, deg) {
-  const next = cloneLayout(layout);
-  const pts = [
-    ...(next.berthPositions?.A || []),
-    ...(next.berthPositions?.B || []),
-    ...(next.berthPositions?.C || []),
-  ];
-  if (!pts.length) return next;
+function getDocks(layout) {
+  return Array.isArray(layout?.docks) && layout.docks.length ? layout.docks : createDefaultDocks();
+}
 
-  const anchor = pts[0]; // shore-end anchor by current convention
-  for (const k of ["A", "B", "C"]) {
-    next.berthPositions[k] = (next.berthPositions[k] || []).map((p) => rotatePoint(p, anchor, deg));
-  }
-  return next;
+function getBerths(layout) {
+  return Array.isArray(layout?.berths) && layout.berths.length ? layout.berths : createDefaultBerths();
 }
 
 function orderedBerthSlots(layout) {
+  const docks = getDocks(layout);
+  const berths = getBerths(layout);
   const out = [];
-  for (const sectionId of ["A", "B", "C"]) {
-    for (const pos of layout.berthPositions?.[sectionId] || []) {
-      out.push({ sectionId, pos });
+  for (const dock of docks) {
+    for (const berth of berths) {
+      if (berth.dockId !== dock.id) continue;
+      if (dock.enabled === false || berth.enabled === false) continue;
+      out.push({
+        berthId: berth.id,
+        dockId: dock.id,
+        dockName: dock.name || dock.id,
+        label: berth.label || berth.id,
+        side: berth.side || "primary",
+        pos: berth.pos,
+        headingDeg: Number.isFinite(berth.headingDeg) ? berth.headingDeg : dock.headingDeg,
+      });
     }
   }
   return out;
 }
 
-function boatHeadingDeg(layout, boat, sectionId) {
+function orderedBoats(layout, boats) {
+  const list = Array.isArray(boats) ? boats : [];
+  const explicit = Array.isArray(layout?.boatOrder) ? layout.boatOrder : null;
+  if (explicit?.length) {
+    const byId = new Map(list.map((boat) => [boat.id, boat]));
+    const seen = new Set();
+    const out = [];
+    for (const id of explicit) {
+      const boat = byId.get(id);
+      if (!boat || seen.has(id)) continue;
+      seen.add(id);
+      out.push(boat);
+    }
+    for (const boat of list) {
+      if (seen.has(boat.id)) continue;
+      out.push(boat);
+    }
+    return out;
+  }
+  return layout?.reverseBoatOrder ? [...list].reverse() : list;
+}
+
+function moveBoatOrder(layout, dragBoatId, targetBoatId) {
+  if (dragBoatId == null || targetBoatId == null || dragBoatId === targetBoatId) return layout;
+  const order = Array.isArray(layout?.boatOrder) ? [...layout.boatOrder] : [];
+  const from = order.indexOf(dragBoatId);
+  const to = order.indexOf(targetBoatId);
+  if (from < 0 || to < 0) return layout;
+  const nextOrder = [...order];
+  const [item] = nextOrder.splice(from, 1);
+  nextOrder.splice(to, 0, item);
+  return { ...layout, boatOrder: nextOrder, reverseBoatOrder: false };
+}
+
+function boatHeadingDeg(layout, boat, slot) {
   const override = layout?.boatHeadingOverrides?.[String(boat?.id || "")];
   if (Number.isFinite(override)) return override;
-  const byDock = layout?.dockHeadingDeg?.[sectionId];
-  if (Number.isFinite(byDock)) return byDock;
+  if (Number.isFinite(slot?.headingDeg)) return slot.headingDeg;
   return 270;
+}
+
+function applyToBerths(layout, target, transform) {
+  const next = cloneLayout(layout);
+  next.berths = getBerths(next).map((berth) => {
+    const matches = target === "berths-all"
+      || (target.startsWith("dock:") && berth.dockId === target.slice(5))
+      || (target.startsWith("berth:") && berth.id === target.slice(6));
+    if (!matches) return berth;
+    return transform(berth);
+  });
+  return next;
+}
+
+function shiftLayout(layout, target, dLat, dLon) {
+  const next = cloneLayout(layout);
+  if (target === "center") next.center = shiftedPoint(next.center, dLat, dLon);
+  if (target === "piers") next.pierLines = next.pierLines.map((line) => line.map((point) => shiftedPoint(point, dLat, dLon)));
+  if (target === "fuel") next.fuelDock = shiftedPoint(next.fuelDock, dLat, dLon);
+  if (target === "berths-all" || target.startsWith("dock:") || target.startsWith("berth:")) {
+    return applyToBerths(next, target, (berth) => ({ ...berth, pos: shiftedPoint(berth.pos, dLat, dLon) }));
+  }
+  return next;
+}
+
+function rotateBerthRows(layout, target, deg) {
+  const next = cloneLayout(layout);
+  const berths = getBerths(next);
+  const selected = berths.filter((berth) => (
+    target === "berths-all"
+      || (target.startsWith("dock:") && berth.dockId === target.slice(5))
+      || (target.startsWith("berth:") && berth.id === target.slice(6))
+  ));
+  if (!selected.length) return next;
+  const anchor = selected[0].pos;
+  next.berths = berths.map((berth) => {
+    const hit = selected.some((item) => item.id === berth.id);
+    if (!hit) return berth;
+    return { ...berth, pos: rotatePoint(berth.pos, anchor, deg) };
+  });
+  return next;
 }
 
 function updateHeading(layout, target, deltaDeg, boatId) {
   const next = cloneLayout(layout);
-  next.dockHeadingDeg = { A: 270, B: 270, C: 270, ...(next.dockHeadingDeg || {}) };
   next.boatHeadingOverrides = { ...(next.boatHeadingOverrides || {}) };
+  next.docks = getDocks(next).map((dock) => {
+    if (target === "dock-all" || target === `dock:${dock.id}`) {
+      return { ...dock, headingDeg: normalizeDeg((dock.headingDeg || 0) + deltaDeg) };
+    }
+    return dock;
+  });
 
-  const add = (value) => {
-    const nextDeg = (((Number(value) || 0) + deltaDeg) % 360 + 360) % 360;
-    return nextDeg;
-  };
-
-  if (target === "dock-all") {
-    for (const dockId of ["A", "B", "C"]) next.dockHeadingDeg[dockId] = add(next.dockHeadingDeg[dockId]);
-  }
-  if (target === "dock-A") next.dockHeadingDeg.A = add(next.dockHeadingDeg.A);
-  if (target === "dock-B") next.dockHeadingDeg.B = add(next.dockHeadingDeg.B);
-  if (target === "dock-C") next.dockHeadingDeg.C = add(next.dockHeadingDeg.C);
   if (target === "boat" && boatId != null) {
     const key = String(boatId);
-    const base = Number.isFinite(next.boatHeadingOverrides[key])
-      ? next.boatHeadingOverrides[key]
-      : 270;
-    next.boatHeadingOverrides[key] = add(base);
+    const base = Number.isFinite(next.boatHeadingOverrides[key]) ? next.boatHeadingOverrides[key] : 270;
+    next.boatHeadingOverrides[key] = normalizeDeg(base + deltaDeg);
   }
   return next;
 }
@@ -187,6 +281,128 @@ function MapZoomTracker({ onZoomChange }) {
   return null;
 }
 
+function nextDockId(docks) {
+  const used = new Set((docks || []).map((dock) => String(dock.id)));
+  for (let i = 0; i < 26; i += 1) {
+    const id = String.fromCharCode(65 + i);
+    if (!used.has(id)) return id;
+  }
+  let idx = 1;
+  while (used.has(`D${idx}`)) idx += 1;
+  return `D${idx}`;
+}
+
+function averagePoint(points) {
+  if (!points.length) return DEFAULT_LAYOUT.center;
+  const sums = points.reduce((acc, point) => [acc[0] + point[0], acc[1] + point[1]], [0, 0]);
+  return [sums[0] / points.length, sums[1] / points.length];
+}
+
+function vectorBetween(a, b) {
+  return [a[0] - b[0], a[1] - b[1]];
+}
+
+function inferDockStep(layout, dockId) {
+  const berths = getBerths(layout).filter((berth) => berth.dockId === dockId);
+  if (berths.length >= 2) return vectorBetween(berths[berths.length - 1].pos, berths[berths.length - 2].pos);
+  return [-0.00006, 0.00012];
+}
+
+function offsetFromVector(point, vector, meters, direction) {
+  const len = Math.hypot(vector[0], vector[1]) || 1;
+  const normal = [-(vector[1] / len), vector[0] / len];
+  const latMeters = normal[0] * meters * direction;
+  const lonMeters = normal[1] * meters * direction;
+  return shiftMeters(point, latMeters, lonMeters);
+}
+
+function addDock(layout) {
+  const next = cloneLayout(layout);
+  const docks = getDocks(next);
+  const berths = getBerths(next);
+  const id = nextDockId(docks);
+  const lastDock = docks[docks.length - 1];
+  const lastDockBerths = berths.filter((berth) => berth.dockId === lastDock?.id);
+  const basePoint = lastDockBerths.length
+    ? averagePoint(lastDockBerths.map((berth) => berth.pos))
+    : next.center;
+  const firstPos = shiftMeters(basePoint, -14, 20);
+  next.docks = [
+    ...docks,
+    { id, name: id, berthMode: "single", enabled: true, headingDeg: lastDock?.headingDeg ?? 270 },
+  ];
+  next.berths = [
+    ...berths,
+    { id: `${id}-1`, dockId: id, label: `${id}1`, side: "primary", enabled: true, pos: firstPos, headingDeg: null },
+  ];
+  return next;
+}
+
+function addBerth(layout, dockId) {
+  const next = cloneLayout(layout);
+  const dock = getDocks(next).find((item) => item.id === dockId);
+  if (!dock) return next;
+  const berths = getBerths(next);
+  const dockBerths = berths.filter((berth) => berth.dockId === dockId);
+  const step = inferDockStep(next, dockId);
+  const mode = dock.berthMode || "single";
+  const primary = dockBerths.filter((berth) => berth.side !== "secondary");
+  const secondary = dockBerths.filter((berth) => berth.side === "secondary");
+  const side = mode === "double" && secondary.length <= primary.length - 1 ? "secondary" : "primary";
+  let pos;
+  if (side === "secondary" && primary.length) {
+    const anchor = primary[Math.min(secondary.length, primary.length - 1)].pos;
+    pos = offsetFromVector(anchor, step, 7, 1);
+  } else if (dockBerths.length >= 1) {
+    pos = shiftedPoint(dockBerths[dockBerths.length - 1].pos, step[0], step[1]);
+  } else {
+    const dockBase = averagePoint(getBerths(next).filter((berth) => berth.dockId === dockId).map((berth) => berth.pos));
+    pos = shiftedPoint(dockBase, step[0], step[1]);
+  }
+  const idx = dockBerths.length + 1;
+  next.berths = [
+    ...berths,
+    { id: `${dockId}-${idx}`, dockId, label: `${dock.name || dockId}${idx}`, side, enabled: true, pos, headingDeg: null },
+  ];
+  return next;
+}
+
+function removeDock(layout, dockId) {
+  const next = cloneLayout(layout);
+  next.docks = getDocks(next).filter((dock) => dock.id !== dockId);
+  next.berths = getBerths(next).filter((berth) => berth.dockId !== dockId);
+  return next;
+}
+
+function removeBerth(layout, berthId) {
+  const next = cloneLayout(layout);
+  next.berths = getBerths(next).filter((berth) => berth.id !== berthId);
+  return next;
+}
+
+function updateDockField(layout, dockId, patch) {
+  const next = cloneLayout(layout);
+  next.docks = getDocks(next).map((dock) => {
+    if (dock.id !== dockId) return dock;
+    return { ...dock, ...patch };
+  });
+  if (patch.berthMode === "single") {
+    next.berths = getBerths(next).map((berth) => (
+      berth.dockId === dockId ? { ...berth, side: "primary" } : berth
+    ));
+  }
+  return next;
+}
+
+function updateBerthField(layout, berthId, patch) {
+  const next = cloneLayout(layout);
+  next.berths = getBerths(next).map((berth) => {
+    if (berth.id !== berthId) return berth;
+    return { ...berth, ...patch };
+  });
+  return next;
+}
+
 export default function MarinaMapView({
   boats,
   selectedId,
@@ -210,10 +426,19 @@ export default function MarinaMapView({
   const [windOpen, setWindOpen] = useState(true);
   const [showWindCanvas, setShowWindCanvas] = useState(true);
   const [zoom, setZoom] = useState(17);
+  const [orderDragId, setOrderDragId] = useState(null);
+  const [orderDragOverId, setOrderDragOverId] = useState(null);
 
   useEffect(() => {
     setDraft(layout || DEFAULT_LAYOUT);
   }, [layout]);
+
+  useEffect(() => {
+    setDraft((current) => {
+      if (!current || Array.isArray(current.boatOrder)) return current;
+      return { ...current, boatOrder: orderedBoats(current, boats).map((boat) => boat.id), reverseBoatOrder: false };
+    });
+  }, [boats, layout]);
 
   useEffect(() => {
     if (headingBoatId != null) return;
@@ -226,7 +451,63 @@ export default function MarinaMapView({
   const windMs = hasBoatWind ? marinaConditions?.wind?.speed_ms : weather?.windspeed;
   const windKn = typeof windMs === "number" ? windMs * 1.94384 : null;
   const berthSlots = orderedBerthSlots(active);
-  const assignedBoats = active.reverseBoatOrder ? [...boats].reverse() : boats;
+  const assignedBoats = orderedBoats(active, boats);
+  const docks = getDocks(active);
+  const berths = getBerths(active);
+  const targetOptions = useMemo(() => {
+    const opts = [
+      { value: "center", label: "Map center" },
+      { value: "berths-all", label: "All berths" },
+      { value: "piers", label: "All piers" },
+      { value: "fuel", label: "Fuel dock" },
+    ];
+    for (const dock of docks) opts.push({ value: `dock:${dock.id}`, label: `Dock ${dock.name || dock.id}` });
+    for (const berth of berths) opts.push({ value: `berth:${berth.id}`, label: `${berth.label || berth.id}` });
+    return opts;
+  }, [docks, berths]);
+  const headingOptions = useMemo(() => {
+    const opts = [{ value: "dock-all", label: "All docks" }];
+    for (const dock of docks) opts.push({ value: `dock:${dock.id}`, label: `Dock ${dock.name || dock.id}` });
+    opts.push({ value: "boat", label: "Individual boat" });
+    return opts;
+  }, [docks]);
+
+  useEffect(() => {
+    if (!targetOptions.some((option) => option.value === target)) setTarget("berths-all");
+  }, [target, targetOptions]);
+
+  useEffect(() => {
+    if (!headingOptions.some((option) => option.value === headingTarget)) setHeadingTarget("dock-all");
+  }, [headingOptions, headingTarget]);
+
+  function onOrderDragStart(event, boatId) {
+    setOrderDragId(boatId);
+    setOrderDragOverId(null);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", String(boatId));
+  }
+
+  function onOrderDragOver(event, boatId) {
+    event.preventDefault();
+    if (boatId !== orderDragId) setOrderDragOverId(boatId);
+  }
+
+  function onOrderDrop(event, targetBoatId) {
+    event.preventDefault();
+    if (orderDragId == null || orderDragId === targetBoatId) {
+      setOrderDragId(null);
+      setOrderDragOverId(null);
+      return;
+    }
+    setDraft((current) => moveBoatOrder(current || active, orderDragId, targetBoatId));
+    setOrderDragId(null);
+    setOrderDragOverId(null);
+  }
+
+  function onOrderDragEnd() {
+    setOrderDragId(null);
+    setOrderDragOverId(null);
+  }
 
   return (
     <div
@@ -260,9 +541,9 @@ export default function MarinaMapView({
           const inQueue = queuedBoatIds.has(boat.id);
           return (
             <Marker
-              key={keyFor(boat)}
+              key={`${keyFor(boat)}-${slot.berthId}`}
               position={slot.pos}
-              icon={boatMarkerIcon(boat.color, isSelected, boatHeadingDeg(active, boat, slot.sectionId), zoom)}
+              icon={boatMarkerIcon(boat.color, isSelected, boatHeadingDeg(active, boat, slot), zoom)}
               eventHandlers={{ click: () => onBoatSelect(boat.id) }}
             >
               <Tooltip direction="top" offset={[0, -6]}>
@@ -270,7 +551,8 @@ export default function MarinaMapView({
                   {boat.name}
                 </div>
                 <div style={{ fontSize: 10, opacity: 0.85 }}>
-                  Dock {slot.sectionId}
+                  Dock {slot.dockName} · {slot.label}
+                  {slot.side === "secondary" ? " · far side" : ""}
                   {inQueue ? " · in crane queue" : ""}
                 </div>
               </Tooltip>
@@ -308,6 +590,7 @@ export default function MarinaMapView({
         }}
       >
         Tap a berth marker to open boat details.
+        {berthSlots.length < boats.length ? ` ${boats.length - berthSlots.length} boat${boats.length - berthSlots.length === 1 ? "" : "s"} currently have no berth.` : ""}
       </div>
 
       <div
@@ -403,7 +686,9 @@ export default function MarinaMapView({
             borderRadius: 8,
             padding: 10,
             color: "#c8e0f0",
-            width: 260,
+            width: 360,
+            maxHeight: "calc(100% - 88px)",
+            overflow: "auto",
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
@@ -423,7 +708,7 @@ export default function MarinaMapView({
                 padding: "4px 8px",
               }}
             >
-              {editMode ? "Editing" : "Adjust"}
+              {editMode ? "⚙ Settings open" : "⚙ Settings"}
             </button>
           </div>
 
@@ -435,29 +720,175 @@ export default function MarinaMapView({
                 onChange={(e) => setTarget(e.target.value)}
                 style={{ width: "100%", marginBottom: 8, background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
               >
-                <option value="center">Map center</option>
-                <option value="berths-all">All berths</option>
-                <option value="berths-A">Berths A</option>
-                <option value="berths-B">Berths B</option>
-                <option value="berths-C">Berths C</option>
+                {targetOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
               </select>
 
               <div style={{ fontSize: 10, marginBottom: 6 }}>Boat order</div>
-              <button
-                onClick={() => setDraft((l) => ({ ...l, reverseBoatOrder: !l.reverseBoatOrder }))}
-                style={{
-                  width: "100%",
-                  marginBottom: 10,
-                  background: active.reverseBoatOrder ? "rgba(240,192,64,0.2)" : "rgba(255,255,255,0.06)",
-                  color: active.reverseBoatOrder ? "#f0c040" : "#dcecf5",
-                  border: "1px solid #36566b",
-                  borderRadius: 4,
-                  cursor: "pointer",
-                  padding: "6px 8px",
-                }}
-              >
-                {active.reverseBoatOrder ? "Reversed (shore-first flipped)" : "Normal"}
-              </button>
+              <div style={{ fontSize: 10, color: "#7eabc8", marginBottom: 8 }}>
+                Drag a boat row onto another row to move that boat to a different berth and dock.
+              </div>
+              <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
+                {assignedBoats.map((boat, idx) => {
+                  const slot = berthSlots[idx];
+                  const isDragging = orderDragId === boat.id;
+                  const isOver = orderDragOverId === boat.id && orderDragId !== boat.id;
+                  return (
+                    <div
+                      key={boat.id}
+                      draggable
+                      onDragStart={(event) => onOrderDragStart(event, boat.id)}
+                      onDragOver={(event) => onOrderDragOver(event, boat.id)}
+                      onDrop={(event) => onOrderDrop(event, boat.id)}
+                      onDragEnd={onOrderDragEnd}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "22px 1fr auto",
+                        gap: 8,
+                        alignItems: "center",
+                        padding: "7px 8px",
+                        borderRadius: 6,
+                        border: isOver ? "1px solid rgba(240,192,64,0.7)" : "1px solid rgba(126,171,200,0.2)",
+                        background: isOver ? "rgba(240,192,64,0.12)" : "rgba(255,255,255,0.04)",
+                        opacity: isDragging ? 0.45 : 1,
+                        cursor: "grab",
+                      }}
+                    >
+                      <div style={{ color: "#7eabc8", fontSize: 15, lineHeight: 1, textAlign: "center" }}>⋮⋮</div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 11, color: "#dcecf5", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {boat.name}
+                        </div>
+                        <div style={{ fontSize: 9, color: "#7eabc8", letterSpacing: 0.8, textTransform: "uppercase" }}>
+                          {slot ? `Dock ${slot.dockName} · ${slot.label}` : "Unassigned"}
+                        </div>
+                      </div>
+                      <div style={{ width: 10, height: 10, borderRadius: 999, background: boat.color, boxShadow: "0 0 0 1px rgba(255,255,255,0.18)" }} />
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                <div style={{ fontSize: 10 }}>Docks and berths</div>
+                <button
+                  onClick={() => setDraft((current) => addDock(current || active))}
+                  style={{ cursor: "pointer", borderRadius: 4, border: "1px solid rgba(126,171,200,0.25)", background: "rgba(255,255,255,0.05)", color: "#dcecf5", padding: "4px 8px", fontSize: 10 }}
+                >
+                  + Add dock
+                </button>
+              </div>
+              <div style={{ fontSize: 10, color: "#7eabc8", marginBottom: 10 }}>
+                Each berth stores its own label, side, enabled state and optional heading override. Use Target above to nudge a whole dock or one berth after adding it.
+              </div>
+
+              <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
+                {docks.map((dock) => {
+                  const dockBerths = berths.filter((berth) => berth.dockId === dock.id);
+                  return (
+                    <div key={dock.id} style={{ border: "1px solid rgba(126,171,200,0.18)", borderRadius: 6, padding: 8, background: "rgba(255,255,255,0.03)" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 88px", gap: 6, marginBottom: 6 }}>
+                        <input
+                          value={dock.name || ""}
+                          onChange={(e) => setDraft((current) => updateDockField(current || active, dock.id, { name: e.target.value.slice(0, 24) || dock.id }))}
+                          placeholder="Dock name"
+                          style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
+                        />
+                        <select
+                          value={dock.berthMode || "single"}
+                          onChange={(e) => setDraft((current) => updateDockField(current || active, dock.id, { berthMode: e.target.value }))}
+                          style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
+                        >
+                          <option value="single">One-sided</option>
+                          <option value="double">Two-sided</option>
+                        </select>
+                        <button
+                          onClick={() => setDraft((current) => removeDock(current || active, dock.id))}
+                          style={{ cursor: "pointer", borderRadius: 4, border: "1px solid rgba(224,128,64,0.35)", background: "rgba(224,128,64,0.12)", color: "#e8b090" }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 6, marginBottom: 8, alignItems: "center" }}>
+                        <label style={{ fontSize: 10, color: "#7eabc8" }}>
+                          Heading
+                          <input
+                            type="number"
+                            value={dock.headingDeg ?? 270}
+                            onChange={(e) => setDraft((current) => updateDockField(current || active, dock.id, { headingDeg: normalizeDeg(e.target.value) }))}
+                            style={{ width: "100%", background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
+                          />
+                        </label>
+                        <label style={{ fontSize: 10, color: "#7eabc8", display: "flex", alignItems: "center", gap: 6, marginTop: 12 }}>
+                          <input
+                            type="checkbox"
+                            checked={dock.enabled !== false}
+                            onChange={(e) => setDraft((current) => updateDockField(current || active, dock.id, { enabled: e.target.checked }))}
+                          />
+                          Enabled
+                        </label>
+                        <div />
+                        <button
+                          onClick={() => setDraft((current) => addBerth(current || active, dock.id))}
+                          style={{ cursor: "pointer", borderRadius: 4, border: "1px solid rgba(126,171,200,0.25)", background: "rgba(255,255,255,0.05)", color: "#dcecf5", padding: "6px 8px", fontSize: 10, alignSelf: "end" }}
+                        >
+                          + Add berth
+                        </button>
+                      </div>
+
+                      <div style={{ display: "grid", gap: 6 }}>
+                        {dockBerths.map((berth) => (
+                          <div key={berth.id} style={{ borderTop: "1px solid rgba(126,171,200,0.12)", paddingTop: 6, display: "grid", gap: 6 }}>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 110px 110px 74px", gap: 6 }}>
+                              <input
+                                value={berth.label || ""}
+                                onChange={(e) => setDraft((current) => updateBerthField(current || active, berth.id, { label: e.target.value.slice(0, 24) || berth.id }))}
+                                placeholder="Berth label"
+                                style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
+                              />
+                              <select
+                                value={berth.side || "primary"}
+                                disabled={dock.berthMode !== "double"}
+                                onChange={(e) => setDraft((current) => updateBerthField(current || active, berth.id, { side: e.target.value }))}
+                                style={{ background: "#102537", color: dock.berthMode !== "double" ? "#6a8395" : "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
+                              >
+                                <option value="primary">Near side</option>
+                                <option value="secondary">Far side</option>
+                              </select>
+                              <input
+                                type="number"
+                                placeholder="Heading"
+                                value={berth.headingDeg ?? ""}
+                                onChange={(e) => setDraft((current) => updateBerthField(current || active, berth.id, { headingDeg: e.target.value === "" ? null : normalizeDeg(e.target.value) }))}
+                                style={{ background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
+                              />
+                              <button
+                                onClick={() => setDraft((current) => removeBerth(current || active, berth.id))}
+                                style={{ cursor: "pointer", borderRadius: 4, border: "1px solid rgba(224,128,64,0.35)", background: "rgba(224,128,64,0.12)", color: "#e8b090" }}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                              <label style={{ fontSize: 10, color: "#7eabc8", display: "flex", alignItems: "center", gap: 6 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={berth.enabled !== false}
+                                  onChange={(e) => setDraft((current) => updateBerthField(current || active, berth.id, { enabled: e.target.checked }))}
+                                />
+                                Enabled
+                              </label>
+                              <div style={{ fontSize: 10, color: "#7eabc8" }}>Target key: {berth.label || berth.id}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
 
               <div style={{ fontSize: 10, marginBottom: 6 }}>Boat orientation</div>
               <select
@@ -465,11 +896,9 @@ export default function MarinaMapView({
                 onChange={(e) => setHeadingTarget(e.target.value)}
                 style={{ width: "100%", marginBottom: 8, background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
               >
-                <option value="dock-all">All docks</option>
-                <option value="dock-A">Dock A</option>
-                <option value="dock-B">Dock B</option>
-                <option value="dock-C">Dock C</option>
-                <option value="boat">Individual boat</option>
+                {headingOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
               </select>
 
               {headingTarget === "boat" && (
@@ -494,18 +923,8 @@ export default function MarinaMapView({
                   onChange={(e) => setHeadingStepDeg(Math.max(1, Math.min(90, Number(e.target.value) || 5)))}
                   style={{ flex: 1, background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
                 />
-                <button
-                  onClick={() => setDraft((l) => updateHeading(l, headingTarget, -headingStepDeg, headingBoatId))}
-                  style={{ cursor: "pointer" }}
-                >
-                  -deg
-                </button>
-                <button
-                  onClick={() => setDraft((l) => updateHeading(l, headingTarget, headingStepDeg, headingBoatId))}
-                  style={{ cursor: "pointer" }}
-                >
-                  +deg
-                </button>
+                <button onClick={() => setDraft((current) => updateHeading(current || active, headingTarget, -headingStepDeg, headingBoatId))} style={{ cursor: "pointer" }}>-deg</button>
+                <button onClick={() => setDraft((current) => updateHeading(current || active, headingTarget, headingStepDeg, headingBoatId))} style={{ cursor: "pointer" }}>+deg</button>
               </div>
 
               <div style={{ fontSize: 10, marginBottom: 6 }}>Berth row angle</div>
@@ -519,8 +938,8 @@ export default function MarinaMapView({
                   onChange={(e) => setRotDeg(Math.max(0.5, Math.min(45, Number(e.target.value) || 2)))}
                   style={{ flex: 1, background: "#102537", color: "#dcecf5", border: "1px solid #36566b", borderRadius: 4 }}
                 />
-                <button onClick={() => setDraft((l) => rotateBerthRows(l, -rotDeg))} style={{ cursor: "pointer" }}>-deg</button>
-                <button onClick={() => setDraft((l) => rotateBerthRows(l, rotDeg))} style={{ cursor: "pointer" }}>+deg</button>
+                <button onClick={() => setDraft((current) => rotateBerthRows(current || active, target, -rotDeg))} style={{ cursor: "pointer" }}>-deg</button>
+                <button onClick={() => setDraft((current) => rotateBerthRows(current || active, target, rotDeg))} style={{ cursor: "pointer" }}>+deg</button>
               </div>
 
               <div style={{ fontSize: 10, marginBottom: 6 }}>Step</div>
@@ -536,13 +955,13 @@ export default function MarinaMapView({
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 10 }}>
                 <div />
-                <button onClick={() => setDraft((l) => shiftLayout(l, target, stepDeg, 0))} style={{ cursor: "pointer" }}>N</button>
+                <button onClick={() => setDraft((current) => shiftLayout(current || active, target, stepDeg, 0))} style={{ cursor: "pointer" }}>N</button>
                 <div />
-                <button onClick={() => setDraft((l) => shiftLayout(l, target, 0, -stepDeg))} style={{ cursor: "pointer" }}>W</button>
+                <button onClick={() => setDraft((current) => shiftLayout(current || active, target, 0, -stepDeg))} style={{ cursor: "pointer" }}>W</button>
                 <button onClick={() => setDraft(layout || DEFAULT_LAYOUT)} style={{ cursor: "pointer" }}>Reset</button>
-                <button onClick={() => setDraft((l) => shiftLayout(l, target, 0, stepDeg))} style={{ cursor: "pointer" }}>E</button>
+                <button onClick={() => setDraft((current) => shiftLayout(current || active, target, 0, stepDeg))} style={{ cursor: "pointer" }}>E</button>
                 <div />
-                <button onClick={() => setDraft((l) => shiftLayout(l, target, -stepDeg, 0))} style={{ cursor: "pointer" }}>S</button>
+                <button onClick={() => setDraft((current) => shiftLayout(current || active, target, -stepDeg, 0))} style={{ cursor: "pointer" }}>S</button>
                 <div />
               </div>
 
