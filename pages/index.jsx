@@ -133,6 +133,7 @@ export default function HaraMarina() {
   const [telemetry, setTelemetry] = useState(null);
   const [authed, setAuthed] = useState(null); // null=unknown, false=anon, true=signed-in
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [isHarborMaster, setIsHarborMaster] = useState(false);
   const [marinaLayout, setMarinaLayout] = useState(null);
 
   // Persist selected landing tab across reloads.
@@ -168,11 +169,13 @@ export default function HaraMarina() {
         if (!r.ok) {
           setAuthed(false);
           setIsSuperAdmin(false);
+          setIsHarborMaster(false);
           return;
         }
         const j = await r.json().catch(() => ({}));
         setAuthed(true);
         setIsSuperAdmin(!!j.is_super_admin);
+        setIsHarborMaster(!!j.is_harbor_master || !!j.is_super_admin);
       })
       .catch(() => { if (!cancelled) setAuthed(false); });
     return () => { cancelled = true; };
@@ -1141,6 +1144,15 @@ export default function HaraMarina() {
           </div>
 
           <div style={{textAlign:"right",display:"flex",alignItems:"center",gap:14}}>
+            {isHarborMaster && (
+              <Link href="/bookings" style={{
+                fontSize:10,letterSpacing:2,color:"#e8f4f8",background:"rgba(126,171,200,0.18)",
+                padding:"6px 12px",borderRadius:4,textDecoration:"none",fontWeight:"bold",
+                border:"1px solid rgba(126,171,200,0.35)"}}
+                title="Guest berth bookings (harbor master)">
+                📅 BOOKINGS
+              </Link>
+            )}
             {authed === false && (
               <Link href="/login?next=/" style={{
                 fontSize:10,letterSpacing:2,color:"#091820",background:"#f0c040",
