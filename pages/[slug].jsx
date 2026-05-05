@@ -834,6 +834,7 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
               {isNum(weather.winddirection) && (
                 <div style={{
                   display:"flex", flexDirection:"column", alignItems:"center", gap:6,
+                  flex:"1 1 200px", maxWidth:220, minWidth:0,
                 }}>
                   <WindDirCompass dirDeg={weather.winddirection} size={200} label="Wind direction" />
                 </div>
@@ -1765,6 +1766,7 @@ function BoatWindSection({ tel, ais, weather }) {
         <div style={{
           background:"linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
           border:"1px solid rgba(126,171,200,0.18)",borderRadius:8,padding:"14px",
+          flex:"1 1 240px", maxWidth:268, minWidth:0,
         }}>
           <BoatWindRose
             trueDirDeg={usingFallback ? showTrueDir : null}
@@ -1786,6 +1788,7 @@ function BoatWindSection({ tel, ais, weather }) {
             background:"linear-gradient(180deg, rgba(13,36,56,0.6), rgba(9,28,44,0.6))",
             border:"1px solid rgba(126,171,200,0.18)",borderRadius:8,padding:"14px",
             display:"flex", flexDirection:"column", alignItems:"center", gap:6,
+            flex:"1 1 220px", maxWidth:248, minWidth:0,
           }}>
             <HeadingClock headingDeg={heading} cogDeg={cog} size={220} />
             <div style={{fontSize:9,letterSpacing:1,color:"#5a8aaa",marginTop:4,textAlign:"center"}}>

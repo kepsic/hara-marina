@@ -92,7 +92,8 @@ export default function WindDirCompass({ dirDeg, size = 200, label = "Wind dir" 
       <div style={{ fontSize: 9, letterSpacing: 2, color: "#7eabc8", textTransform: "uppercase" }}>
         {label}
       </div>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <svg width="100%" height="auto" viewBox={`0 0 ${size} ${size}`}
+           style={{ display: "block", maxWidth: size, width: "100%", height: "auto" }}>
         <circle cx={cx} cy={cy} r={r}
                 fill="rgba(8,22,36,0.55)"
                 stroke="rgba(126,171,200,0.25)" strokeWidth={1} />
