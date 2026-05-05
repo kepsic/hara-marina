@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { upload } from "@vercel/blob/client";
 
-export default function BoatPhotos({ slug, color = "#7eabc8" }) {
+export default function BoatPhotos({ slug, color = "#7eabc8", heroUrl = null, onSetHero = null }) {
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
@@ -76,8 +76,19 @@ export default function BoatPhotos({ slug, color = "#7eabc8" }) {
         `/api/photos/${slug}?url=${encodeURIComponent(p.url)}`,
         { method: "DELETE", credentials: "same-origin" }
       );
-      if (r.ok) setPhotos((prev) => prev.filter((x) => x.url !== p.url));
+      if (r.ok) {
+        setPhotos((prev) => prev.filter((x) => x.url !== p.url));
+        // If the deleted photo was the hero, clear it too.
+        if (onSetHero && heroUrl && heroUrl === p.url) {
+          try { await onSetHero(null); } catch {}
+        }
+      }
     } catch {}
+  }
+
+  async function handleSetHero(p) {
+    if (!onSetHero) return;
+    try { await onSetHero(p.url === heroUrl ? null : p.url); } catch {}
   }
 
   if (forbidden) return null;
@@ -148,11 +159,15 @@ export default function BoatPhotos({ slug, color = "#7eabc8" }) {
           gridTemplateColumns:"repeat(auto-fill, minmax(140px, 1fr))",
           gap:10,
         }}>
-          {photos.map((p) => (
+          {photos.map((p) => {
+            const isHero = !!heroUrl && heroUrl === p.url;
+            return (
             <div key={p.url} style={{position:"relative",aspectRatio:"4 / 3",
               background:"rgba(13,36,56,0.6)",
-              border:"1px solid rgba(126,171,200,0.18)",borderRadius:6,
-              overflow:"hidden"}}>
+              border: isHero ? `1px solid ${color}` : "1px solid rgba(126,171,200,0.18)",
+              borderRadius:6,
+              overflow:"hidden",
+              boxShadow: isHero ? `0 0 0 1px ${color}55` : "none"}}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={p.url}
@@ -163,6 +178,32 @@ export default function BoatPhotos({ slug, color = "#7eabc8" }) {
                   cursor:"zoom-in",display:"block",
                 }}
               />
+              {isHero && (
+                <div style={{
+                  position:"absolute",top:6,left:6,
+                  background:"rgba(0,0,0,0.6)",color:"#e8f4f8",
+                  border:`1px solid ${color}`,
+                  padding:"2px 7px",borderRadius:10,fontSize:9,
+                  letterSpacing:1.5,textTransform:"uppercase",
+                  pointerEvents:"none",
+                }}>★ Hero</div>
+              )}
+              {onSetHero && (
+                <button
+                  type="button"
+                  onClick={() => handleSetHero(p)}
+                  title={isHero ? "Unset hero image" : "Use as hero image"}
+                  style={{
+                    position:"absolute",bottom:6,left:6,
+                    background: isHero ? `${color}cc` : "rgba(0,0,0,0.55)",
+                    color:"#e8f4f8",
+                    border:`1px solid ${isHero ? color : "rgba(255,255,255,0.18)"}`,
+                    padding:"3px 8px",borderRadius:10,fontSize:10,
+                    letterSpacing:1,textTransform:"uppercase",
+                    cursor:"pointer",fontFamily:"inherit",lineHeight:1,
+                  }}
+                >{isHero ? "★ Hero" : "☆ Set hero"}</button>
+              )}
               <button
                 type="button"
                 onClick={() => handleDelete(p)}
@@ -176,7 +217,8 @@ export default function BoatPhotos({ slug, color = "#7eabc8" }) {
                 }}
               >×</button>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

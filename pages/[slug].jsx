@@ -667,19 +667,48 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
 
         {/* Boat hero */}
         <div style={{padding:"28px 20px 16px",maxWidth:980,margin:"0 auto"}}>
-          <div style={{display:"flex",alignItems:"center",gap:18,flexWrap:"wrap"}}>
-            <svg width="120" height="48" viewBox="0 0 80 32">
-              <path d="M6 16 C6 16 18 4 50 4 L74 10 L76 16 L74 22 L50 28 C18 28 6 16 6 16Z"
-                fill={boat.color} stroke="rgba(255,255,255,0.3)" strokeWidth="1"/>
-              <line x1="38" y1="7" x2="38" y2="25" stroke="rgba(255,255,255,0.55)" strokeWidth="1.5"/>
-              <ellipse cx="58" cy="16" rx="9" ry="5.5" fill="rgba(0,0,0,0.28)"/>
-            </svg>
-            <div>
-              <div style={{fontSize:9,letterSpacing:4,color:"#7eabc8",textTransform:"uppercase"}}>Vessel</div>
-              <div style={{fontSize:36,fontWeight:"bold",letterSpacing:5}}>{boat.name}</div>
-              {boat.owner && <div style={{fontSize:13,color:"#9ec8e0",marginTop:4}}>{boat.owner}</div>}
+          {boat.hero_url ? (
+            <div style={{
+              position:"relative",
+              borderRadius:10,
+              overflow:"hidden",
+              border:`1px solid ${boat.color}55`,
+              boxShadow:"0 8px 24px rgba(0,0,0,0.35)",
+              aspectRatio:"16 / 7",
+              background:"#0a1f30",
+            }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={boat.hero_url}
+                alt={boat.name}
+                style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}
+              />
+              <div style={{
+                position:"absolute",left:0,right:0,bottom:0,
+                padding:"40px 22px 16px",
+                background:"linear-gradient(to top, rgba(2,10,20,0.85) 0%, rgba(2,10,20,0) 100%)",
+                color:"#e8f4f8",
+              }}>
+                <div style={{fontSize:9,letterSpacing:4,color:"#9ec8e0",textTransform:"uppercase"}}>Vessel</div>
+                <div style={{fontSize:36,fontWeight:"bold",letterSpacing:5}}>{boat.name}</div>
+                {boat.owner && <div style={{fontSize:13,color:"#c8e0f0",marginTop:4}}>{boat.owner}</div>}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div style={{display:"flex",alignItems:"center",gap:18,flexWrap:"wrap"}}>
+              <svg width="120" height="48" viewBox="0 0 80 32">
+                <path d="M6 16 C6 16 18 4 50 4 L74 10 L76 16 L74 22 L50 28 C18 28 6 16 6 16Z"
+                  fill={boat.color} stroke="rgba(255,255,255,0.3)" strokeWidth="1"/>
+                <line x1="38" y1="7" x2="38" y2="25" stroke="rgba(255,255,255,0.55)" strokeWidth="1.5"/>
+                <ellipse cx="58" cy="16" rx="9" ry="5.5" fill="rgba(0,0,0,0.28)"/>
+              </svg>
+              <div>
+                <div style={{fontSize:9,letterSpacing:4,color:"#7eabc8",textTransform:"uppercase"}}>Vessel</div>
+                <div style={{fontSize:36,fontWeight:"bold",letterSpacing:5}}>{boat.name}</div>
+                {boat.owner && <div style={{fontSize:13,color:"#9ec8e0",marginTop:4}}>{boat.owner}</div>}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Vessel safety hero — visible to owners and PIN viewers */}
@@ -940,7 +969,26 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
 
         {/* Photos */}
         <Section title="📷 Photos">
-          <BoatPhotos slug={slug} color={boat.color} />
+          <BoatPhotos
+            slug={slug}
+            color={boat.color}
+            heroUrl={boat.hero_url || null}
+            onSetHero={isOwnerView ? async (url) => {
+              try {
+                const r = await fetch(`/api/boats/${slug}/settings`, {
+                  method: "PUT",
+                  credentials: "same-origin",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ hero_url: url }),
+                });
+                if (r.ok) {
+                  const j = await r.json().catch(() => ({}));
+                  const next = j?.settings?.hero_url ?? url ?? null;
+                  setBoat((prev) => ({ ...prev, hero_url: next }));
+                }
+              } catch {}
+            } : null}
+          />
         </Section>
         </>)}
 
@@ -1331,6 +1379,7 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
                 draft:  (typeof s.draft_m  === "number") ? s.draft_m  : (s.draft_m  === null ? "" : prev.draft),
                 engine: s.engine ?? prev.engine,
                 equipment: Array.isArray(s.equipment) ? s.equipment : (prev.equipment || []),
+                hero_url: s.hero_url === undefined ? prev.hero_url : (s.hero_url || null),
               }));
             }}
           />
