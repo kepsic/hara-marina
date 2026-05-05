@@ -1333,6 +1333,7 @@ export default function HaraMarina() {
               onSaveLayout={saveMarinaLayout}
               weather={weather}
               marinaConditions={marinaConditions}
+              boatBadges={boatBadges}
             />
           )}
 

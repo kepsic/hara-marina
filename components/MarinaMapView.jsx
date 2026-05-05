@@ -77,6 +77,10 @@ function keyFor(boat) {
   return `boat-${boat.id}`;
 }
 
+function boatSlug(name) {
+  return String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
 function cloneLayout(layout) {
   return JSON.parse(JSON.stringify(layout));
 }
@@ -502,6 +506,7 @@ export default function MarinaMapView({
   onSaveLayout,
   weather,
   marinaConditions,
+  boatBadges,
 }) {
   const [editMode, setEditMode] = useState(false);
   const [target, setTarget] = useState("berths-all");
@@ -673,21 +678,46 @@ export default function MarinaMapView({
           if (!boat) return null;
           const isSelected = boat.id === selectedId;
           const inQueue = queuedBoatIds.has(boat.id);
+          const slug = boatSlug(boat.name);
+          const badge = boatBadges?.[slug] || null;
           return (
             <Marker
               key={`${keyFor(boat)}-${slot.berthId}`}
               position={slot.pos}
               icon={boatMarkerIcon(boat.color, isSelected, boatHeadingDeg(active, boat, slot), zoom)}
-              eventHandlers={{ click: () => onBoatSelect(boat.id) }}
+              eventHandlers={{
+                click: () => {
+                  if (isSuperAdmin && editMode) {
+                    onBoatSelect(boat.id);
+                    return;
+                  }
+                  onBoatSelect(boat.id);
+                  if (typeof window !== "undefined") {
+                    window.open(`/${slug}`, "_blank", "noopener,noreferrer");
+                  }
+                },
+              }}
             >
               <Tooltip direction="top" offset={[0, -6]}>
                 <div style={{ fontSize: 11, fontWeight: "bold", letterSpacing: 0.5 }}>
                   {boat.name}
+                  {badge?.online ? <span style={{ color: "#5fc37d", marginLeft: 6, fontSize: 9 }}>● live</span> : null}
                 </div>
                 <div style={{ fontSize: 10, opacity: 0.85 }}>
                   Dock {slot.dockName} · {slot.label}
                   {slot.side === "secondary" ? " · far side" : ""}
                   {inQueue ? " · in crane queue" : ""}
+                </div>
+                {badge && (
+                  <div style={{ fontSize: 10, marginTop: 4, color: "#345268" }}>
+                    {badge.battery_pct != null ? `Bat ${Math.round(badge.battery_pct)}%` : null}
+                    {badge.shore_power != null ? `${badge.battery_pct != null ? " · " : ""}${badge.shore_power ? "Shore ⚡" : "Off-grid"}` : null}
+                    {badge.bilge_cm != null ? ` · Bilge ${badge.bilge_cm} cm` : null}
+                    {badge.wind_speed_kn != null ? ` · Wind ${badge.wind_speed_kn.toFixed(1)} kn` : null}
+                  </div>
+                )}
+                <div style={{ fontSize: 10, marginTop: 4, color: "#1f6fa8", fontWeight: 600 }}>
+                  Click → open boat portal
                 </div>
               </Tooltip>
             </Marker>
