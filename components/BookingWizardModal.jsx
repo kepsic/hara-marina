@@ -34,6 +34,7 @@ export default function BookingWizardModal({ open, onClose, slot, marinaSlug, on
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [submittedBooking, setSubmittedBooking] = useState(null);
+  const [blocked, setBlocked] = useState([]); // [{from, to, status}] active bookings on this berth
 
   // Reset wizard state when re-opened on a new berth.
   useEffect(() => {
@@ -42,6 +43,23 @@ export default function BookingWizardModal({ open, onClose, slot, marinaSlug, on
     setError("");
     setSubmittedBooking(null);
   }, [open, slot?.berthId]);
+
+  // Load blocked date ranges for this berth so the picker can warn about conflicts.
+  useEffect(() => {
+    if (!open || !slot?.berthId) { setBlocked([]); return; }
+    let cancelled = false;
+    fetch(`/api/bookings/availability?berth=${encodeURIComponent(slot.berthId)}`)
+      .then((r) => r.json())
+      .then((j) => { if (!cancelled) setBlocked(Array.isArray(j?.blocked) ? j.blocked : []); })
+      .catch(() => { if (!cancelled) setBlocked([]); });
+    return () => { cancelled = true; };
+  }, [open, slot?.berthId]);
+
+  // Detect overlap between [arrival, departure) and any blocked range.
+  const conflict = useMemo(() => {
+    if (!arrival || !departure) return null;
+    return blocked.find((b) => b.from < departure && b.to > arrival) || null;
+  }, [blocked, arrival, departure]);
 
   // Live price quote whenever dates change.
   useEffect(() => {
@@ -66,7 +84,7 @@ export default function BookingWizardModal({ open, onClose, slot, marinaSlug, on
   if (Number.isFinite(slot.maxBeamM) && Number(beamM) > slot.maxBeamM) fitErrors.push(`Beam exceeds berth limit ${slot.maxBeamM} m`);
   if (Number.isFinite(slot.maxDraftM) && Number(draftM) > slot.maxDraftM) fitErrors.push(`Draft exceeds berth limit ${slot.maxDraftM} m`);
 
-  const canStep2 = arrival && departure && arrival < departure;
+  const canStep2 = arrival && departure && arrival < departure && !conflict;
   const canStep3 = boatName.trim() && loaM && beamM && draftM && fitErrors.length === 0;
   const canStep4 = guestName.trim() && /.+@.+\..+/.test(email);
 
@@ -140,9 +158,19 @@ export default function BookingWizardModal({ open, onClose, slot, marinaSlug, on
                   <span style={{ fontSize: 12, color: "#7eabc8" }}>Departure</span>
                   <input type="date" min={arrival || today} value={departure} onChange={(e) => setDeparture(e.target.value)} style={inputStyle} />
                 </label>
-                {quote && quote.nights > 0 && (
+                {quote && quote.nights > 0 && !conflict && (
                   <div style={{ background: "rgba(31,111,168,0.15)", border: "1px solid rgba(31,111,168,0.4)", padding: 10, borderRadius: 8, fontSize: 13 }}>
                     {quote.nights} night{quote.nights === 1 ? "" : "s"} · estimated <b>{(quote.totalCents / 100).toFixed(2)} {quote.currency}</b>
+                  </div>
+                )}
+                {conflict && (
+                  <div style={{ background: "rgba(224,128,64,0.18)", border: "1px solid rgba(224,128,64,0.5)", padding: 10, borderRadius: 8, fontSize: 13 }}>
+                    ⚠ This berth is already <b>{conflict.status}</b> from <b>{conflict.from}</b> to <b>{conflict.to}</b>. Pick different dates.
+                  </div>
+                )}
+                {blocked.length > 0 && !conflict && (
+                  <div style={{ fontSize: 11, color: "#7eabc8" }}>
+                    Already booked: {blocked.map((b) => `${b.from}→${b.to}`).join(", ")}
                   </div>
                 )}
               </div>

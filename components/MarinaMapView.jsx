@@ -693,6 +693,30 @@ export default function MarinaMapView({
   const [drawDockBerthCount, setDrawDockBerthCount] = useState(4);
   const [adminTab, setAdminTab] = useState("docks");
   const [expandedDockId, setExpandedDockId] = useState(null);
+  const [bookingBlocks, setBookingBlocks] = useState({}); // { berthId: [{from,to,status}] }
+
+  // Load active bookings so we can show booked berths as occupied even if the
+  // owner hasn't manually toggled the per-berth occupied flag.
+  useEffect(() => {
+    let cancelled = false;
+    function load() {
+      fetch("/api/bookings/availability")
+        .then((r) => r.json())
+        .then((j) => { if (!cancelled) setBookingBlocks(j?.blocked && typeof j.blocked === "object" ? j.blocked : {}); })
+        .catch(() => { if (!cancelled) setBookingBlocks({}); });
+    }
+    load();
+    const t = setInterval(load, 60_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, []);
+
+  // True if any active (pending/confirmed/checked-in) booking covers `today`.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  function isBookedNow(berthId) {
+    const list = bookingBlocks[berthId];
+    if (!Array.isArray(list)) return null;
+    return list.find((b) => b.from <= todayIso && b.to > todayIso) || null;
+  }
 
   useEffect(() => {
     setDraft(layout || DEFAULT_LAYOUT);
@@ -841,7 +865,8 @@ export default function MarinaMapView({
           if (boat) return null;
           const berth = berths.find((b) => b.id === slot.berthId);
           const bookable = slot.dockBookable;
-          const occupied = bookable ? berth?.occupied === true : false;
+          const activeBooking = bookable ? isBookedNow(slot.berthId) : null;
+          const occupied = bookable ? (berth?.occupied === true || !!activeBooking) : false;
           const guestLabel = berth?.guestLabel || "";
           // State drives icon styling:
           //   home-away      = home-fleet berth, boat is away  (solid grey silhouette)
@@ -893,6 +918,11 @@ export default function MarinaMapView({
                   Dock {slot.dockName} · {slot.label}
                   {slot.side === "secondary" ? " · far side" : ""}
                 </div>
+                {bookable && activeBooking ? (
+                  <div style={{ fontSize: 10, marginTop: 3, color: "#5a8aaa" }}>
+                    Booked ({activeBooking.status}) {activeBooking.from} → {activeBooking.to}
+                  </div>
+                ) : null}
                 {bookable && sizeBits.length ? (
                   <div style={{ fontSize: 10, marginTop: 3, color: "#2c5d3a", fontWeight: 600 }}>
                     {sizeBits.join(" · ")}
@@ -1669,7 +1699,13 @@ export default function MarinaMapView({
         slot={bookingSlot}
         marinaSlug={null}
         onClose={() => setBookingSlot(null)}
-        onCreated={() => { /* hooked into UI refresh elsewhere if needed */ }}
+        onCreated={() => {
+          // Re-fetch availability so the just-booked berth flips to occupied immediately.
+          fetch("/api/bookings/availability")
+            .then((r) => r.json())
+            .then((j) => setBookingBlocks(j?.blocked && typeof j.blocked === "object" ? j.blocked : {}))
+            .catch(() => {});
+        }}
       />
     </div>
   );
