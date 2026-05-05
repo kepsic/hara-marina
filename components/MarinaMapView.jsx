@@ -182,7 +182,7 @@ export default function MarinaMapView({
         zoom={17}
         minZoom={14}
         maxZoom={20}
-        style={{ height: "100%", width: "100%" }}
+        style={{ height: "100%", width: "100%", position: "relative", zIndex: 0 }}
         scrollWheelZoom
       >
         <TileLayer
@@ -221,6 +221,7 @@ export default function MarinaMapView({
         speed={windMs}
         gust={hasBoatWind ? null : weather?.windspeedmax}
         orientation="map"
+        zIndex={300}
       />
 
       <div

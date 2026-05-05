@@ -10,7 +10,7 @@ import { useEffect, useRef } from "react";
  *   where N is LEFT, S is RIGHT, E is UP, W is DOWN.
  * orientation="map": true north-up map orientation where N is UP and E is RIGHT.
  */
-export default function WindCanvas({ dir, speed, gust, orientation = "marina" }) {
+export default function WindCanvas({ dir, speed, gust, orientation = "marina", zIndex = 1 }) {
   const ref = useRef(null);
   const stateRef = useRef({ particles: [], lastT: 0 });
 
@@ -135,7 +135,7 @@ export default function WindCanvas({ dir, speed, gust, orientation = "marina" })
         height: "100%",
         pointerEvents: "none",
         opacity: 0.55,
-        zIndex: 1,
+        zIndex,
       }}
       aria-hidden
     />
