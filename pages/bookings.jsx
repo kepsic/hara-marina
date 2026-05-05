@@ -58,7 +58,7 @@ export default function BookingsAdminPage() {
     const set = new Map();
     for (const b of bookings) {
       const key = `${b.dockId}:${b.berthId}`;
-      if (!set.has(key)) set.set(key, { dockId: b.dockId, berthId: b.berthId });
+      if (!set.has(key)) set.set(key, { dockId: b.dockId, berthId: b.berthId, dockName: b.dockName || b.dockId, berthLabel: b.berthLabel || b.berthId });
     }
     return Array.from(set.values()).sort((a, b) =>
       a.dockId.localeCompare(b.dockId) || a.berthId.localeCompare(b.berthId));
@@ -134,7 +134,7 @@ export default function BookingsAdminPage() {
               {berths.map((slot) => (
                 <tr key={`${slot.dockId}:${slot.berthId}`}>
                   <td style={{ position: "sticky", left: 0, background: "#0c1d2c", padding: "6px 10px", borderBottom: "1px solid #1c3346", whiteSpace: "nowrap" }}>
-                    {slot.dockId} · {slot.berthId}
+                    {slot.dockName} · {slot.berthLabel}
                   </td>
                   {days.map((d) => {
                     const hits = bookings.filter((b) => b.berthId === slot.berthId && b.arrival <= d && b.departure > d);
@@ -167,7 +167,7 @@ export default function BookingsAdminPage() {
             </div>
             <div style={{ fontSize: 13, display: "grid", gap: 6 }}>
               <div><b>Status:</b> <span style={{ color: STATUS_COLORS[selected.status] }}>{selected.status}</span></div>
-              <div><b>Berth:</b> {selected.dockId} · {selected.berthId}</div>
+              <div><b>Berth:</b> {selected.dockName || selected.dockId} · {selected.berthLabel || selected.berthId}</div>
               <div><b>Stay:</b> {selected.arrival} → {selected.departure} ({selected.nights} nights)</div>
               <div><b>Guest:</b> {selected.guestName} &lt;{selected.email}&gt;</div>
               {selected.phone && <div><b>Phone:</b> {selected.phone}</div>}
