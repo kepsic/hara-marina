@@ -2,8 +2,9 @@ import Head from "next/head";
 import Link from "next/link";
 import { INCENTIVES } from "../lib/incentives";
 import { getSuperAdmins } from "../lib/owners";
+import { siteUrlFromReq, ogImageUrl } from "../lib/siteUrl";
 
-export async function getServerSideProps() {
+export async function getServerSideProps({ req }) {
   // Static-ish landing — no per-request data needed today. Kept as SSR so
   // we can later inject open-spots-per-country counts without changing the
   // rendering path.
@@ -20,12 +21,18 @@ export async function getServerSideProps() {
       slots: INCENTIVES.FOUNDING_MARINA_SLOTS_PER_COUNTRY,
       discount: INCENTIVES.FOUNDING_MARINA_DISCOUNT_PCT,
       contactEmail,
+      siteUrl: siteUrlFromReq(req),
     },
   };
 }
 
-export default function MarketingPage({ foundingPct, standardPct, slots, discount, contactEmail }) {
+export default function MarketingPage({ foundingPct, standardPct, slots, discount, contactEmail, siteUrl = "" }) {
   const mailto = `mailto:${contactEmail}?subject=${encodeURIComponent("MerVare — marina enquiry")}`;
+  const ogImage = ogImageUrl(siteUrl, {
+    title: "MerVare",
+    subtitle: "The operating system for small marinas",
+    badge: "MerVare",
+  });
   return (
     <>
       <Head>
@@ -38,13 +45,13 @@ export default function MarketingPage({ foundingPct, standardPct, slots, discoun
         <meta property="og:site_name" content="MerVare" />
         <meta property="og:title" content="MerVare — the operating system for small marinas" />
         <meta property="og:description" content="Berth booking, live telemetry, shore-power billing." />
-        <meta property="og:image" content="/api/og?title=MerVare&subtitle=The%20operating%20system%20for%20small%20marinas&badge=MerVare" />
+        <meta property="og:image" content={ogImage} />
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content="MerVare — the operating system for small marinas" />
         <meta name="twitter:description" content="Berth booking, live telemetry, shore-power billing." />
-        <meta name="twitter:image" content="/api/og?title=MerVare&subtitle=The%20operating%20system%20for%20small%20marinas&badge=MerVare" />
+        <meta name="twitter:image" content={ogImage} />
         <meta name="theme-color" content="#0b1d2c" />
       </Head>
 
