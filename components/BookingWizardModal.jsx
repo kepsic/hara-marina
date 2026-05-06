@@ -224,6 +224,14 @@ export default function BookingWizardModal({ open, onClose, slot, marinaSlug, on
                     {fitErrors.map((e) => <div key={e}>⚠ {e}</div>)}
                   </div>
                 )}
+                {quote && quote.nights > 0 && fitErrors.length === 0 && (
+                  <div style={{ background: "rgba(31,111,168,0.15)", border: "1px solid rgba(31,111,168,0.4)", padding: 10, borderRadius: 8, fontSize: 13 }}>
+                    {quote.nights} night{quote.nights === 1 ? "" : "s"} · estimated <b>{(quote.totalCents / 100).toFixed(2)} {quote.currency}</b>
+                    {loaM && Number(loaM) > 0 && (
+                      <span style={{ color: "#7eabc8", fontSize: 11 }}> · for {loaM} m LOA</span>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
