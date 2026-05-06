@@ -5,6 +5,11 @@
 
 import Stripe from "stripe";
 import { updateBooking } from "../../../lib/bookings";
+import { Redis } from "../../../lib/redis";
+import { keys } from "../../../lib/redis-keys";
+import { getSupabase } from "../../../lib/supabase";
+
+const redis = new Redis();
 
 export const config = {
   api: { bodyParser: false }, // Stripe needs the raw body to verify the signature.
@@ -39,6 +44,23 @@ export default async function handler(req, res) {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
+  // Idempotency: Stripe retries webhooks aggressively (>24h on failure).
+  // Drop duplicates so we don't double-confirm bookings or double-activate
+  // power tokens. Redis SETNX keeps the check atomic across replicas.
+  const dedupKey = keys.stripeEvent(event.id);
+  try {
+    const seen = await redis.get(dedupKey);
+    if (seen) {
+      return res.status(200).json({ received: true, deduplicated: true });
+    }
+    await redis.set(dedupKey, "1", { ex: 86400 });
+  } catch (e) {
+    console.error("[stripe-webhook] dedup failed (continuing):", e?.message || e);
+  }
+
+  // NOTE: Stripe Connect requires TWO webhook endpoints in the dashboard
+  // pointing at this same URL: a regular Account endpoint (booking +
+  // subscription events) and a Connect endpoint (account.updated etc.).
   try {
     if (event.type === "payment_intent.succeeded") {
       const intent = event.data.object;
@@ -54,6 +76,13 @@ export default async function handler(req, res) {
         );
       }
     }
+    if (event.type === "payment_intent.payment_failed") {
+      const intent = event.data.object;
+      const bookingId = intent.metadata?.bookingId;
+      if (bookingId) {
+        await updateBooking(bookingId, { paymentStatus: "failed" }).catch(() => null);
+      }
+    }
     if (event.type === "charge.refunded") {
       const ch = event.data.object;
       const bookingId = ch.metadata?.bookingId;
@@ -62,6 +91,32 @@ export default async function handler(req, res) {
     if (event.type === "account.updated") {
       const acct = event.data.object;
       console.log("[stripe-webhook] account.updated", acct.id, "charges:", acct.charges_enabled, "payouts:", acct.payouts_enabled);
+    }
+    // MerVare SaaS subscription lifecycle (marina pays MerVare).
+    if (event.type === "customer.subscription.created" || event.type === "customer.subscription.updated") {
+      const sub = event.data.object;
+      const sb = getSupabase();
+      if (sb && sub.customer) {
+        await sb.from("marinas")
+          .update({ stripe_subscription_id: sub.id, plan: sub.status === "active" ? "marina" : "free" })
+          .eq("stripe_customer_id", sub.customer)
+          .then(() => null, (e) => console.error("[stripe-webhook] sub upsert:", e?.message || e));
+      }
+    }
+    if (event.type === "customer.subscription.deleted") {
+      const sub = event.data.object;
+      const sb = getSupabase();
+      if (sb && sub.customer) {
+        // Downgrade to free plan when subscription cancels.
+        await sb.from("marinas")
+          .update({ plan: "free", stripe_subscription_id: null })
+          .eq("stripe_customer_id", sub.customer)
+          .then(() => null, () => null);
+      }
+    }
+    if (event.type === "invoice.payment_failed" || event.type === "invoice.payment_succeeded") {
+      const inv = event.data.object;
+      console.log("[stripe-webhook]", event.type, "invoice:", inv.id, "customer:", inv.customer);
     }
   } catch (e) {
     console.error("[stripe-webhook] handler failed:", e?.message || e);

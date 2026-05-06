@@ -58,10 +58,19 @@ function extractSlug(host) {
   return null;
 }
 
+// Whitelist for marina slugs. Prevents Redis/MQTT key injection by ensuring
+// the slug can only ever contain lowercase alphanumerics + hyphens.
+const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/;
+
 export function middleware(req) {
   const host = req.headers.get("host") || "";
   const slug = extractSlug(host);
   if (!slug) return NextResponse.next();
+
+  // Invalid subdomain → hard 404 instead of leaking it into the app.
+  if (!SLUG_RE.test(slug)) {
+    return new NextResponse("Not found", { status: 404 });
+  }
 
   const headers = new Headers(req.headers);
   headers.set("x-marina-slug", slug);
