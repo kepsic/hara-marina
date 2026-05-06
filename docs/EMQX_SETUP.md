@@ -38,7 +38,7 @@ marina/<slug>/telemetry
 
 `<slug>` is the boat name lowercased with non-alphanumeric runs replaced by `-`
 (e.g. `Kalevi Poeg` → `kalevi-poeg`). The slug is the same one used in the URL
-`https://hara-marina.mereveer.ee/<slug>`.
+`https://hara.mervare.app/<slug>`.
 
 Use **QoS 1** and **retain = true** so the latest reading survives reboots.
 
@@ -79,7 +79,7 @@ Only `…/telemetry` is wired up server-side today.
 ## 2. Server endpoint
 
 ```
-POST https://hara-marina.mereveer.ee/api/ingest/telemetry
+POST https://hara.mervare.app/api/ingest/telemetry
 Content-Type: application/json
 Authorization: Bearer ${MARINA_INGEST_TOKEN}
 ```
@@ -171,7 +171,7 @@ FROM
 
 **Action: Add → Webhook (HTTP Server)**
 
-- **URL:** `https://hara-marina.mereveer.ee/api/ingest/telemetry`
+- **URL:** `https://hara.mervare.app/api/ingest/telemetry`
 - **Method:** `POST`
 - **Headers:**
   - `Content-Type: application/json`
@@ -235,7 +235,7 @@ above with a client-cert authenticator.
 ```bash
 TOKEN="<MARINA_INGEST_TOKEN>"
 
-curl -sS -X POST https://hara-marina.mereveer.ee/api/ingest/telemetry \
+curl -sS -X POST https://hara.mervare.app/api/ingest/telemetry \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{

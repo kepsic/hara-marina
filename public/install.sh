@@ -2,10 +2,10 @@
 # Hara Marina — boat onboarding installer.
 #
 # Run as root. Set MARINA_SETUP to the URL printed by the marina onboarding
-# wizard (https://hara-marina.vercel.app/onboard).
+# wizard (https://hara.mervare.app/onboard).
 #
-#   curl -fsSL https://hara-marina.vercel.app/install.sh | \
-#     sudo MARINA_SETUP='https://hara-marina.vercel.app/api/onboarding/config?t=...' bash
+#   curl -fsSL https://hara.mervare.app/install.sh | \
+#     sudo MARINA_SETUP='https://hara.mervare.app/api/onboarding/config?t=...' bash
 #
 # Optional environment variables:
 #   MARINA_VERSION  pinned bridge release tag    (default: latest)
@@ -29,7 +29,7 @@ warn() { printf '%s!%s %s\n' "$C_WARN" "$C_RESET" "$*"; }
 die()  { printf '%s✗%s %s\n' "$C_ERR"  "$C_RESET" "$*" >&2; exit 1; }
 
 [ "$(id -u)" -eq 0 ] || die "must run as root (try: sudo MARINA_SETUP='...' bash)"
-[ -n "${MARINA_SETUP:-}" ] || die "MARINA_SETUP env var not set. Get the install command from https://hara-marina.vercel.app/onboard"
+[ -n "${MARINA_SETUP:-}" ] || die "MARINA_SETUP env var not set. Get the install command from https://hara.mervare.app/onboard"
 
 REPO="${MARINA_REPO:-kepsic/hara-marina}"
 VERSION="${MARINA_VERSION:-latest}"
@@ -151,5 +151,5 @@ ${C_OK}${C_BOLD}Done.${C_RESET}
   ${C_DIM}# restart after editing config${C_RESET}
   sudo systemctl restart marina-bridge
 
-Open https://hara-marina.vercel.app/${SLUG:-} — your boat data should appear within ~30 s.
+Open https://hara.mervare.app/${SLUG:-} — your boat data should appear within ~30 s.
 EOF

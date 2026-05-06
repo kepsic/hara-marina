@@ -2,7 +2,7 @@
 
 Tiny Go agent that runs on the boat, reads telemetry from one or more onboard
 sources, normalises it, and publishes a single JSON document to the
-[Hara Marina](https://hara-marina.mereveer.ee) MQTT broker every N seconds.
+[Hara Marina](https://hara.mervare.app) MQTT broker every N seconds.
 
 Currently supported sources:
 
@@ -32,7 +32,7 @@ GOOS=linux GOARCH=arm64 go build -o marina-bridge-linux-arm64 ./cmd/marina-bridg
 ```
 
 Generate `config.yaml` from the marina onboarding wizard
-(`https://hara-marina.mereveer.ee/onboard`).
+(`https://hara.mervare.app/onboard`).
 
 ## Install as a systemd service
 

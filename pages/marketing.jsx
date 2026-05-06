@@ -41,7 +41,7 @@ export default function MarketingPage({ foundingPct, standardPct, slots, discoun
             <a href="#features">Features</a>
             <a href="#pricing">Pricing</a>
             <a href="#founding">Founding marinas</a>
-            <Link href="/marina-signup">Sign up</Link>
+            <Link href="/onboarding/marina">Sign up</Link>
             <Link href="/login" className="cta-link">Sign in</Link>
           </nav>
         </header>
@@ -55,7 +55,7 @@ export default function MarketingPage({ foundingPct, standardPct, slots, discoun
             landlords who don't.
           </p>
           <div className="hero-cta">
-            <Link href="/marina-signup" className="btn-primary">
+            <Link href="/onboarding/marina" className="btn-primary">
               List your marina
             </Link>
             <a href="https://mervare.app" className="btn-secondary">
@@ -119,7 +119,7 @@ export default function MarketingPage({ foundingPct, standardPct, slots, discoun
               No exclusivity. No multi-year contract. Cancel anytime — but you'll
               never get the founding rate again.
             </p>
-            <Link href="/marina-signup" className="btn-primary">
+            <Link href="/onboarding/marina" className="btn-primary">
               Claim a founding slot
             </Link>
           </div>
@@ -139,7 +139,7 @@ export default function MarketingPage({ foundingPct, standardPct, slots, discoun
                 "Standard {standardPct}% platform fee on any bookings",
               ].map((f) => f.replace("{standardPct}", standardPct))}
               cta="Get listed"
-              href="/marina-signup"
+              href="/onboarding/marina"
             />
             <PriceCard
               tier="Marina"
@@ -153,7 +153,7 @@ export default function MarketingPage({ foundingPct, standardPct, slots, discoun
                 `${standardPct}% platform fee on bookings`,
               ]}
               cta="Start trial"
-              href="/marina-signup"
+              href="/onboarding/marina"
               highlight
             />
             <PriceCard
@@ -167,7 +167,7 @@ export default function MarketingPage({ foundingPct, standardPct, slots, discoun
                 "Vote on roadmap priorities",
               ]}
               cta="Claim a slot"
-              href="/marina-signup"
+              href="/onboarding/marina"
             />
           </div>
         </section>
@@ -191,7 +191,7 @@ export default function MarketingPage({ foundingPct, standardPct, slots, discoun
           <div>© {new Date().getFullYear()} MerVare · Estonia</div>
           <div className="foot-links">
             <a href="https://mervare.app">mervare.app</a>
-            <Link href="/marina-signup">Sign up</Link>
+            <Link href="/onboarding/marina">Sign up</Link>
             <Link href="/login">Sign in</Link>
           </div>
         </footer>
