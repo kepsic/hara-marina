@@ -49,6 +49,13 @@ func main() {
 		Relay int    `json:"relay"`
 		State bool   `json:"state"`
 	}
+	type pedestalRelayCmd struct {
+		Type    string `json:"type"`
+		BerthID string `json:"berth_id"`
+		Channel int    `json:"channel"`
+		State   bool   `json:"state"`
+		TokenID string `json:"token_id"`
+	}
 	type humidityRuleCmd struct {
 		Type     string  `json:"type"`
 		Enabled  bool    `json:"enabled"`
@@ -173,6 +180,10 @@ func main() {
 	}
 
 	if !*dryRun {
+		// Boat-level commands: marina/<slug>/cmd/#
+		// Pedestal commands also flow through the same /cmd/ subtree so this
+		// one subscription covers both deployment topologies (boat-side bridge
+		// or marina-pedestal bridge with cfg.Slug = marina slug).
 		cmdTopic := strings.TrimSuffix(cfg.Marina.Topic, "/telemetry") + "/cmd/#"
 		sub, err := marina.NewCommandSubscriber(
 			cfg.Marina.Broker,
@@ -213,6 +224,27 @@ func main() {
 					}
 					ruleMu.Unlock()
 					slog.Info("relay set ok", "source", "cmd", "bank", cmd.Bank, "relay", cmd.Relay, "state", cmd.State)
+				case "pedestal_relay_set":
+					var cmd pedestalRelayCmd
+					if err := json.Unmarshal(payload, &cmd); err != nil {
+						slog.Error("pedestal_relay_set decode failed", "source", "cmd", "err", err)
+						return
+					}
+					if cmd.Channel < 1 || cmd.Channel > 4 {
+						slog.Warn("pedestal command rejected: bad channel", "source", "cmd", "channel", cmd.Channel)
+						return
+					}
+					if !relayBackendAvailable {
+						slog.Warn("no relay backend enabled (pedestal)", "source", "cmd")
+						return
+					}
+					slog.Info("pedestal relay set received", "source", "cmd", "berth", cmd.BerthID, "channel", cmd.Channel, "state", cmd.State, "token", cmd.TokenID)
+					if err := writeRelay(cmd.Channel, cmd.State); err != nil {
+						slog.Error("pedestal relay write failed", "source", "cmd", "channel", cmd.Channel, "state", cmd.State, "err", err)
+						return
+					}
+					snap.SetRelayBank1(cmd.Channel, cmd.State)
+					slog.Info("pedestal relay set ok", "source", "cmd", "berth", cmd.BerthID, "channel", cmd.Channel, "state", cmd.State)
 				case "humidity_rule_set":
 					var cmd humidityRuleCmd
 					if err := json.Unmarshal(payload, &cmd); err != nil {
