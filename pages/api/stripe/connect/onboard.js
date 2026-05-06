@@ -16,6 +16,7 @@ import {
   getConnectAccountForMarina,
   setConnectAccountForMarina,
 } from "../../../../lib/stripeConnect";
+import { siteUrlFromReq } from "../../../../lib/siteUrl";
 
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
@@ -66,7 +67,7 @@ export default async function handler(req, res) {
         acct = created.id;
         await setConnectAccountForMarina(marinaSlug, acct);
       }
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://mervare.app";
+      const baseUrl = siteUrlFromReq(req);
       const link = await stripe.accountLinks.create({
         account: acct,
         refresh_url: req.body?.refreshUrl || `${baseUrl}/bookings`,
