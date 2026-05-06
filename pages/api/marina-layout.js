@@ -1,9 +1,12 @@
 import { Redis } from "../../lib/redis";
 import { verifySession, SESSION_COOKIE_NAME } from "../../lib/auth";
 import { isSuperAdmin } from "../../lib/owners";
+import { keys } from "../../lib/redis-keys";
+import { resolveMarinaSlug } from "../../lib/marinaContext";
 
 const redis = new Redis();
-const KEY = "hara:marina-layout:v1";
+const DEFAULT_SLUG = process.env.DEFAULT_MARINA_SLUG || "hara";
+const layoutKey = (slug) => keys.marinaLayout(slug || DEFAULT_SLUG);
 
 const DEFAULT_BERTH_POINTS = {
   A: [
@@ -263,8 +266,8 @@ function sanitizeLayout(raw) {
   };
 }
 
-async function getStoredLayout() {
-  const value = await redis.get(KEY);
+async function getStoredLayout(slug) {
+  const value = await redis.get(layoutKey(slug));
   if (!value) return clone(DEFAULT_LAYOUT);
   if (typeof value === "object") return sanitizeLayout(value);
   try {
@@ -276,9 +279,10 @@ async function getStoredLayout() {
 
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
+  const slug = resolveMarinaSlug(req) || DEFAULT_SLUG;
 
   if (req.method === "GET") {
-    const layout = await getStoredLayout();
+    const layout = await getStoredLayout(slug);
     return res.status(200).json({ layout });
   }
 
@@ -289,7 +293,7 @@ export default async function handler(req, res) {
     }
 
     const layout = sanitizeLayout(req.body?.layout);
-    await redis.set(KEY, layout);
+    await redis.set(layoutKey(slug), layout);
     return res.status(200).json({ ok: true, layout });
   }
 
