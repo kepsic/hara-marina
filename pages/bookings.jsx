@@ -114,6 +114,7 @@ export default function BookingsAdminPage() {
         </label>
         <button onClick={refresh} style={{ background: "#1f6fa8", color: "#fff", border: "none", padding: "6px 12px", borderRadius: 4, cursor: "pointer", fontSize: 13 }}>Refresh</button>
         <button onClick={() => setShowSettings(true)} style={{ background: "#36566b", color: "#fff", border: "none", padding: "6px 12px", borderRadius: 4, cursor: "pointer", fontSize: 13 }}>⚙ Pricing</button>
+        <StripePayoutsButton marinaSlug={me?.marina_slug || null} />
         <div style={{ fontSize: 11, color: "#7eabc8" }}>{loading ? "Loading…" : `${bookings.length} booking${bookings.length === 1 ? "" : "s"}`}</div>
       </div>
 
@@ -231,6 +232,87 @@ export default function BookingsAdminPage() {
 
       {showSettings && <PricingSettingsModal isSuperAdmin={!!me?.is_super_admin} onClose={() => setShowSettings(false)} />}
     </div>
+  );
+}
+
+/**
+ * Status pill + onboarding launcher for the marina's Stripe Connect account.
+ * Calls GET /api/stripe/connect/onboard to read current status, POST to
+ * create / continue onboarding. Without a connected account the platform
+ * collects to the SaaS owner's balance — useful for first-time setup but
+ * not how a real marina should run long-term.
+ */
+function StripePayoutsButton({ marinaSlug }) {
+  const [state, setState] = useState({ loading: true });
+
+  async function refresh() {
+    setState({ loading: true });
+    try {
+      const qs = marinaSlug ? `?marinaSlug=${encodeURIComponent(marinaSlug)}` : "";
+      const r = await fetch(`/api/stripe/connect/onboard${qs}`);
+      if (r.status === 404) { setState({ status: "none" }); return; }
+      if (r.status === 501) { setState({ status: "disabled" }); return; }
+      const j = await r.json();
+      if (!r.ok) { setState({ status: "error", error: j?.error || "failed" }); return; }
+      setState({ status: "linked", account: j });
+    } catch (e) {
+      setState({ status: "error", error: e.message });
+    }
+  }
+
+  useEffect(() => { refresh(); }, [marinaSlug]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function startOnboarding() {
+    setState((s) => ({ ...s, busy: true }));
+    try {
+      const r = await fetch("/api/stripe/connect/onboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(marinaSlug ? { marinaSlug } : {}),
+      });
+      const j = await r.json();
+      if (r.ok && j.url) { window.location.assign(j.url); return; }
+      alert(j?.error || "onboarding failed");
+    } finally {
+      setState((s) => ({ ...s, busy: false }));
+    }
+  }
+
+  if (state.loading) {
+    return <span style={{ fontSize: 12, color: "#7eabc8" }}>Stripe…</span>;
+  }
+  if (state.status === "disabled") {
+    return <span style={{ fontSize: 12, color: "#7eabc8" }} title="STRIPE_SECRET_KEY not set on server">Stripe disabled</span>;
+  }
+  if (state.status === "error") {
+    return <span style={{ fontSize: 12, color: "#e8b090" }} title={state.error}>Stripe error</span>;
+  }
+  if (state.status === "linked") {
+    const a = state.account;
+    const ready = a.payoutsEnabled && a.chargesEnabled && a.detailsSubmitted;
+    return (
+      <button
+        onClick={startOnboarding}
+        disabled={state.busy}
+        title={`acct ${a.accountId} · charges:${a.chargesEnabled} payouts:${a.payoutsEnabled} details:${a.detailsSubmitted}`}
+        style={{
+          background: ready ? "#3aa86b" : "#d4a017",
+          color: "#fff", border: "none", padding: "6px 12px", borderRadius: 4, cursor: "pointer", fontSize: 13,
+        }}
+      >
+        {ready ? "✓ Stripe payouts" : "⚠ Finish Stripe setup"}
+      </button>
+    );
+  }
+  // status === "none"
+  return (
+    <button
+      onClick={startOnboarding}
+      disabled={state.busy}
+      style={{ background: "#635bff", color: "#fff", border: "none", padding: "6px 12px", borderRadius: 4, cursor: "pointer", fontSize: 13 }}
+    >
+      {state.busy ? "Opening Stripe…" : "Connect Stripe payouts"}
+    </button>
   );
 }
 
