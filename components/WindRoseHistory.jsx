@@ -53,25 +53,38 @@ function wedgePath(cx, cy, r0, r1, a1Deg, a2Deg) {
  */
 export default function WindRoseHistory({ rows, size = 360, title }) {
   const stats = useMemo(() => {
-    // Pick mode based on what's actually present in the data:
-    //   "earth"    – we have earth-frame wind direction (true dir, or
-    //                heading + AWA). Cardinals labelled N/E/S/W.
-    //   "relative" – moored boat with no GPS/compass. We only know wind
-    //                angle relative to the bow. Cardinals labelled
-    //                Bow/Stbd/Stern/Port and the result is meaningful only
-    //                if the boat hasn't swung at its mooring.
-    let hasEarth = false;
-    let hasRelative = false;
+    // Pick mode based on which frame has the most usable samples in the
+    // window — NOT the first row that happens to have earth-frame data.
+    // Mixing modes in one rose isn't meaningful (cardinals would lie), so
+    // we pick whichever yields more populated wedges and bin only those
+    // rows. This way a boat that has heading for 3 minutes out of a 7-day
+    // window doesn't silently throw away the other ~5000 AWA-only samples.
+    //
+    //   "earth"    – earth-frame direction (true dir, or heading + AWA).
+    //                Cardinals labelled N/E/S/W.
+    //   "relative" – moored boat with no GPS/compass. Only AWA is known.
+    //                Cardinals labelled Bow/Stbd/Stern/Port; meaningful
+    //                only if the boat hasn't swung at its mooring.
+    let earthCount = 0;
+    let relativeCount = 0;
     for (const r of rows || []) {
+      const hasSpd = isNum(r.wind_true_speed_kn) || isNum(r.wind_app_speed_kn);
+      if (!hasSpd) continue;
       if (isNum(r.wind_true_dir_deg) ||
           (isNum(r.heading_deg) && isNum(r.wind_app_angle_deg))) {
-        hasEarth = true;
-      } else if (isNum(r.wind_app_angle_deg)) {
-        hasRelative = true;
+        earthCount++;
       }
-      if (hasEarth) break;
+      if (isNum(r.wind_app_angle_deg)) {
+        relativeCount++;
+      }
     }
-    const mode = hasEarth ? "earth" : hasRelative ? "relative" : "earth";
+    // Prefer earth-frame when it covers a comparable share of samples,
+    // otherwise fall back to relative so we don't throw away the bulk
+    // of the window. Threshold (≥40 % of relative count) is generous
+    // enough that any genuine sailing trip stays in earth mode.
+    const mode = earthCount > 0 && earthCount * 2.5 >= relativeCount
+      ? "earth"
+      : relativeCount > 0 ? "relative" : "earth";
 
     const sectorBins = Array.from({ length: SECTORS }, () =>
       SPEED_BINS.map(() => 0)
