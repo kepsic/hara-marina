@@ -1,22 +1,31 @@
 import Head from "next/head";
 import Link from "next/link";
 import { INCENTIVES } from "../lib/incentives";
+import { getSuperAdmins } from "../lib/owners";
 
 export async function getServerSideProps() {
   // Static-ish landing — no per-request data needed today. Kept as SSR so
   // we can later inject open-spots-per-country counts without changing the
   // rendering path.
+  //
+  // Superadmin email is sourced from MARINA_SUPERADMINS so every CTA on the
+  // page has a working human-contact fallback ("talk to a founder") if a
+  // visitor can't or won't self-serve through /onboarding/marina.
+  const supers = getSuperAdmins();
+  const contactEmail = supers[0] || "hello@mervare.io";
   return {
     props: {
       foundingPct: INCENTIVES.PLATFORM_FEE_FOUNDING_PCT,
       standardPct: INCENTIVES.PLATFORM_FEE_STANDARD_PCT,
       slots: INCENTIVES.FOUNDING_MARINA_SLOTS_PER_COUNTRY,
       discount: INCENTIVES.FOUNDING_MARINA_DISCOUNT_PCT,
+      contactEmail,
     },
   };
 }
 
-export default function MarketingPage({ foundingPct, standardPct, slots, discount }) {
+export default function MarketingPage({ foundingPct, standardPct, slots, discount, contactEmail }) {
+  const mailto = `mailto:${contactEmail}?subject=${encodeURIComponent("MerVare — marina enquiry")}`;
   return (
     <>
       <Head>
@@ -25,8 +34,17 @@ export default function MarketingPage({ foundingPct, standardPct, slots, discoun
           name="description"
           content="Berth booking, live telemetry, owner portals, and shore-power billing — built with marinas, not for landlords. Founding marinas get 50% off for life."
         />
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="MerVare" />
         <meta property="og:title" content="MerVare — the operating system for small marinas" />
         <meta property="og:description" content="Berth booking, live telemetry, shore-power billing." />
+        <meta property="og:image" content="/api/og?title=MerVare&subtitle=The%20operating%20system%20for%20small%20marinas&badge=MerVare" />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="MerVare — the operating system for small marinas" />
+        <meta name="twitter:description" content="Berth booking, live telemetry, shore-power billing." />
+        <meta name="twitter:image" content="/api/og?title=MerVare&subtitle=The%20operating%20system%20for%20small%20marinas&badge=MerVare" />
         <meta name="theme-color" content="#0b1d2c" />
       </Head>
 
@@ -122,6 +140,10 @@ export default function MarketingPage({ foundingPct, standardPct, slots, discoun
             <Link href="/onboarding/marina" className="btn-primary">
               Claim a founding slot
             </Link>
+            <p className="founding-contact">
+              Prefer to talk first?{" "}
+              <a href={mailto}>Email a founder →</a>
+            </p>
           </div>
         </section>
 
@@ -193,6 +215,7 @@ export default function MarketingPage({ foundingPct, standardPct, slots, discoun
             <a href="https://mervare.app">mervare.app</a>
             <Link href="/onboarding/marina">Sign up</Link>
             <Link href="/login">Sign in</Link>
+            <a href={mailto}>Contact</a>
           </div>
         </footer>
       </main>
@@ -285,6 +308,8 @@ export default function MarketingPage({ foundingPct, standardPct, slots, discoun
         }
         .founding-card h2 { text-align: center; margin: 0 0 16px; font-size: 26px; }
         .founding-card p { font-size: 15px; line-height: 1.6; color: #d8e3ec; max-width: 640px; margin: 0 auto 14px; }
+        .founding-contact { font-size: 13px; color: #c8dceb; margin-top: 14px; }
+        .founding-contact a { color: #fff; text-decoration: underline; }
         .badge {
           display: inline-block;
           background: rgba(255, 255, 255, 0.15);

@@ -21,6 +21,7 @@ import SettingsModal from "../components/SettingsModal";
 import ShareModal from "../components/ShareModal";
 import TelemetryHistoryChart from "../components/TelemetryHistoryChart";
 import VesselSafetyHero from "../components/VesselSafetyHero";
+import { siteUrlFromReq, ogImageUrl } from "../lib/siteUrl";
 
 const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
@@ -43,13 +44,15 @@ export async function getServerSideProps({ req, params, query }) {
   const session = await verifySession(token);
   const email = session?.email;
 
+  const siteUrl = siteUrlFromReq(req);
+
   if (email && canViewBoat(email, slug)) {
-    return { props: { initialBoat: boat, viewerEmail: email, accessKind: "owner", lockType: null, shareId: null } };
+    return { props: { initialBoat: boat, viewerEmail: email, accessKind: "owner", lockType: null, shareId: null, siteUrl } };
   }
 
   const shareSession = await verifyBoatShareSession(req.cookies?.[BOAT_SHARE_COOKIE_NAME]);
   if (shareSession?.slug === slug) {
-    return { props: { initialBoat: boat, viewerEmail: null, accessKind: "shared", lockType: null, shareId: null } };
+    return { props: { initialBoat: boat, viewerEmail: null, accessKind: "shared", lockType: null, shareId: null, siteUrl } };
   }
 
   const { hasOwnerPin, isShareIdActive } = await import("../lib/boatAccess");
@@ -62,6 +65,7 @@ export async function getServerSideProps({ req, params, query }) {
         accessKind: "pin-locked",
         lockType: "temporary",
         shareId,
+        siteUrl,
       },
     };
   }
@@ -74,6 +78,7 @@ export async function getServerSideProps({ req, params, query }) {
         accessKind: "pin-locked",
         lockType: "owner",
         shareId: null,
+        siteUrl,
       },
     };
   }
@@ -103,9 +108,19 @@ function Stat({ label, value, unit, color = "#e8f4f8", big }) {
   );
 }
 
-export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner", lockType = null, shareId = null }) {
+export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner", lockType = null, shareId = null, siteUrl = "" }) {
   const [boat, setBoat] = useState(initialBoat);
   const slug = norm(initialBoat.name);
+  const ogTitle = `${initialBoat.name} · Hara Marina`;
+  const ogSubtitle = lockType === "temporary"
+    ? "Shared boat link · live telemetry"
+    : "Live telemetry, position, weather";
+  const ogImage = ogImageUrl(siteUrl, {
+    title: initialBoat.name,
+    subtitle: ogSubtitle,
+    badge: "Boat",
+  });
+  const canonicalUrl = siteUrl ? `${siteUrl.replace(/\/+$/, "")}/${slug}` : "";
   const [tel, setTel] = useState(null);
   const [weather, setWeather] = useState(null);
   const [ais, setAis] = useState(null);
@@ -551,6 +566,19 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
           <meta name="theme-color" content="#091820"/>
           <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex"/>
           <meta name="googlebot" content="noindex, nofollow"/>
+          <meta name="description" content={ogSubtitle} />
+          {canonicalUrl && <meta property="og:url" content={canonicalUrl} />}
+          <meta property="og:type" content="website" />
+          <meta property="og:site_name" content="MerVare" />
+          <meta property="og:title" content={ogTitle} />
+          <meta property="og:description" content={ogSubtitle} />
+          <meta property="og:image" content={ogImage} />
+          <meta property="og:image:width" content="1200" />
+          <meta property="og:image:height" content="630" />
+          <meta name="twitter:card" content="summary_large_image" />
+          <meta name="twitter:title" content={ogTitle} />
+          <meta name="twitter:description" content={ogSubtitle} />
+          <meta name="twitter:image" content={ogImage} />
         </Head>
         <div style={{
           minHeight:"100vh",
@@ -613,6 +641,19 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
         <meta name="theme-color" content="#091820"/>
         <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex"/>
         <meta name="googlebot" content="noindex, nofollow"/>
+        <meta name="description" content={ogSubtitle} />
+        {canonicalUrl && <meta property="og:url" content={canonicalUrl} />}
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="MerVare" />
+        <meta property="og:title" content={ogTitle} />
+        <meta property="og:description" content={ogSubtitle} />
+        <meta property="og:image" content={ogImage} />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={ogTitle} />
+        <meta name="twitter:description" content={ogSubtitle} />
+        <meta name="twitter:image" content={ogImage} />
       </Head>
 
       <div style={{

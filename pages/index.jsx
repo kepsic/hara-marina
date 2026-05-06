@@ -4,15 +4,17 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import WindCanvas from "../components/WindCanvas";
 import BoatWindRose from "../components/BoatWindRose";
+import { siteUrlFromReq, ogImageUrl } from "../lib/siteUrl";
 
 const MarinaMapView = dynamic(() => import("../components/MarinaMapView"), { ssr: false });
 
 export async function getServerSideProps({ req }) {
   const { resolveMarinaSlug } = await import("../lib/marinaContext");
   const slug = resolveMarinaSlug(req);
+  const siteUrl = siteUrlFromReq(req);
   if (slug) {
     // Subdomain / configured marina → render the marina dashboard.
-    return { props: { discoveryMode: false, marinaSlug: slug, marinas: [] } };
+    return { props: { discoveryMode: false, marinaSlug: slug, marinas: [], siteUrl } };
   }
   // Root domain → load all active marinas for the discovery map.
   let marinas = [];
@@ -44,7 +46,7 @@ export async function getServerSideProps({ req }) {
       plan: "free",
     }];
   }
-  return { props: { discoveryMode: true, marinas } };
+  return { props: { discoveryMode: true, marinas, siteUrl } };
 }
 
 const DOCK_SECTIONS = [
@@ -147,11 +149,11 @@ function Field({label, fieldKey, placeholder, editMode, draft, setDraft}) {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-export default function IndexPage({ discoveryMode = false, marinas = [] }) {
+export default function IndexPage({ discoveryMode = false, marinas = [], siteUrl = "" }) {
   if (discoveryMode) {
-    return <MarinaDiscoveryPage marinas={marinas} />;
+    return <MarinaDiscoveryPage marinas={marinas} siteUrl={siteUrl} />;
   }
-  return <HaraMarina />;
+  return <HaraMarina siteUrl={siteUrl} />;
 }
 
 const MarinaDiscoveryMap = dynamic(
@@ -159,12 +161,26 @@ const MarinaDiscoveryMap = dynamic(
   { ssr: false, loading: () => null }
 );
 
-function MarinaDiscoveryPage({ marinas }) {
+function MarinaDiscoveryPage({ marinas, siteUrl = "" }) {
+  const ogTitle = "MerVare — find your next berth";
+  const ogDescription = "Discover marinas across the Baltic and book a guest berth in seconds.";
+  const ogImage = ogImageUrl(siteUrl, { title: "Find your next berth", subtitle: "Marinas across the Baltic", badge: "MerVare" });
   return (
     <>
       <Head>
         <title>MerVare — find your next berth</title>
-        <meta name="description" content="Discover marinas across the Baltic and book a guest berth in seconds." />
+        <meta name="description" content={ogDescription} />
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="MerVare" />
+        <meta property="og:title" content={ogTitle} />
+        <meta property="og:description" content={ogDescription} />
+        <meta property="og:image" content={ogImage} />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={ogTitle} />
+        <meta name="twitter:description" content={ogDescription} />
+        <meta name="twitter:image" content={ogImage} />
       </Head>
       <div style={{
         position: "fixed", inset: 0,
@@ -204,7 +220,7 @@ function MarinaDiscoveryPage({ marinas }) {
 }
 
 // ── Hara Marina dashboard (existing) ──────────────────────────────────────────
-function HaraMarina() {
+function HaraMarina({ siteUrl = "" } = {}) {
   const [boats,      setBoats]      = useState(INITIAL_BOATS);
   const [queue,      setQueue]      = useState([]);
   const [view,       setView]       = useState("marina");
@@ -1216,6 +1232,18 @@ function HaraMarina() {
         <meta name="theme-color" content="#091820"/>
         <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex"/>
         <meta name="googlebot" content="noindex, nofollow"/>
+        <meta name="description" content="Hara Sadam dock map, weather and live boat telemetry." />
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="Hara Marina" />
+        <meta property="og:title" content="Hara Marina" />
+        <meta property="og:description" content="Dock map, weather and live boat telemetry." />
+        <meta property="og:image" content={ogImageUrl(siteUrl, { title: "Hara Marina", subtitle: "Dock map · weather · live telemetry", badge: "Marina" })} />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Hara Marina" />
+        <meta name="twitter:description" content="Dock map, weather and live boat telemetry." />
+        <meta name="twitter:image" content={ogImageUrl(siteUrl, { title: "Hara Marina", subtitle: "Dock map · weather · live telemetry", badge: "Marina" })} />
       </Head>
 
       <div style={{height:"100vh",background:"#091820",fontFamily:"'Georgia','Times New Roman',serif",display:"flex",flexDirection:"column",overflow:"hidden"}}>

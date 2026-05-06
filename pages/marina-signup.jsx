@@ -2,6 +2,17 @@ import { useState } from "react";
 import Head from "next/head";
 import Link from "next/link";
 import { useRouter } from "next/router";
+import { getSuperAdmins } from "../lib/owners";
+
+export async function getServerSideProps() {
+  // Surface a real human contact (the SaaS superadmin) on this form so a
+  // prospective marina that hits a backend error or just wants a chat has a
+  // working fallback instead of a dead-end "failed" message.
+  const supers = getSuperAdmins();
+  return {
+    props: { contactEmail: supers[0] || "hello@mervare.io" },
+  };
+}
 
 const norm = (s) =>
   String(s || "")
@@ -10,7 +21,8 @@ const norm = (s) =>
     .replace(/^-|-$/g, "")
     .slice(0, 32);
 
-export default function MarinaSignup() {
+export default function MarinaSignup({ contactEmail }) {
+  const mailto = `mailto:${contactEmail}?subject=${encodeURIComponent("MerVare — marina signup help")}`;
   const router = useRouter();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
@@ -137,7 +149,11 @@ export default function MarinaSignup() {
           </p>
 
           {err && (
-            <div style={{ marginTop: 14, color: "#ff8a7a", fontSize: 13 }}>{err}</div>
+            <div style={{ marginTop: 14, color: "#ff8a7a", fontSize: 13 }}>
+              {err}
+              {" — "}
+              <a href={mailto} style={{ color: "#9bd1f0" }}>email us</a> and we'll set you up.
+            </div>
           )}
 
           <button type="submit" disabled={busy} style={{ ...btnPrimary, marginTop: 20, opacity: busy ? 0.6 : 1 }}>
@@ -147,6 +163,8 @@ export default function MarinaSignup() {
           <p style={{ marginTop: 18, fontSize: 12, color: "#7eabc8" }}>
             By signing up you agree to MerVare&apos;s terms. Already have a marina?{" "}
             <Link href="/login" style={{ color: "#9bd1f0" }}>Sign in</Link>.
+            {" · "}
+            Questions? <a href={mailto} style={{ color: "#9bd1f0" }}>{contactEmail}</a>
           </p>
         </form>
       </Card>
