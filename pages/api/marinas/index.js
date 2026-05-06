@@ -27,8 +27,9 @@ export default async function handler(req, res) {
   try {
     const { data, error } = await sb
       .from("marinas")
-      .select("slug, name, lat, lon, country, plan")
+      .select("slug, name, lat, lon, country, plan, founding_marina, founding_marina_number")
       .eq("active", true)
+      .not("onboarding_completed_at", "is", null)
       .order("name", { ascending: true });
     if (error) {
       console.error("[/api/marinas] supabase error:", error.message);
@@ -43,6 +44,8 @@ export default async function handler(req, res) {
         lon: m.lon,
         country: m.country,
         plan: m.plan,
+        founding_marina: !!m.founding_marina,
+        founding_marina_number: m.founding_marina_number || null,
         berth_count: null,
         available_berths: null,
       })),

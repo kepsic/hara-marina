@@ -11,6 +11,7 @@
 
 import { verifySession, SESSION_COOKIE_NAME } from "../../../lib/auth";
 import { getSupabase } from "../../../lib/supabase";
+import { applyReferralCode, claimFoundingMarina } from "../../../lib/referrals";
 
 const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/;
 const RESERVED = new Set([
@@ -80,6 +81,25 @@ export default async function handler(req, res) {
     { marina_id: marina.id, email: session.email.toLowerCase(), role: "admin" },
     { marina_id: marina.id, email: session.email.toLowerCase(), role: "harbor_master" },
   ]);
+
+  // T15: optional referral code + automatic founding-marina slot.
+  const referralCode = req.body?.referralCode || req.body?.ref;
+  if (referralCode) {
+    try {
+      await applyReferralCode(referralCode, session.email, {
+        eventType: "marina_signup",
+        marinaId: marina.id,
+      });
+      await sb.from("marinas").update({ referral_code: String(referralCode).toUpperCase() }).eq("id", marina.id);
+    } catch (e) {
+      console.warn("[marinas/register] referral apply failed:", e?.message || e);
+    }
+  }
+  try {
+    await claimFoundingMarina(marina.id, cleanCountry);
+  } catch (e) {
+    console.warn("[marinas/register] founding claim failed:", e?.message || e);
+  }
 
   // Best-effort welcome email — don't block on it.
   try {
