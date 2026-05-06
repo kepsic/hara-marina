@@ -24,6 +24,15 @@ const ROOT_HOSTNAMES = new Set([
   "www.mervare.io",
 ]);
 
+// Marketing-site hosts: the root path "/" is rewritten to /marketing so
+// mervare.io shows the landing page instead of the discovery map. The
+// product surface (discovery map, signup wizard, marina dashboards) lives
+// under mervare.app.
+const MARKETING_HOSTNAMES = new Set([
+  "mervare.io",
+  "www.mervare.io",
+]);
+
 const LEGACY_HOSTNAMES = new Set([
   "hara-marina.mereveer.ee",
   "hara-marina.vercel.app",
@@ -63,7 +72,17 @@ function extractSlug(host) {
 const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/;
 
 export function middleware(req) {
-  const host = req.headers.get("host") || "";
+  const host = (req.headers.get("host") || "").toLowerCase().split(":")[0];
+
+  // Marketing landing on mervare.io: rewrite "/" → "/marketing" so the
+  // discovery map (mervare.app behaviour) doesn't leak onto the .io apex.
+  // Everything else (e.g. /onboard, /login, /api/*) stays as-is.
+  if (MARKETING_HOSTNAMES.has(host) && req.nextUrl.pathname === "/") {
+    const url = req.nextUrl.clone();
+    url.pathname = "/marketing";
+    return NextResponse.rewrite(url);
+  }
+
   const slug = extractSlug(host);
   if (!slug) return NextResponse.next();
 
