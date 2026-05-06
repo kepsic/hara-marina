@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import Head from "next/head";
 import Link from "next/link";
-import { INITIAL_BOATS } from "../lib/constants";
+import { getBoatBySlug } from "../lib/boatRegistry";
+import { resolveMarinaSlug } from "../lib/marinaContext";
 import {
   verifySession,
   SESSION_COOKIE_NAME,
@@ -29,7 +30,8 @@ const knToMs = (kn) => kn * 0.514444;
 
 export async function getServerSideProps({ req, params, query }) {
   const slug = params.slug;
-  const baseBoat = INITIAL_BOATS.find((b) => norm(b.name) === slug);
+  const marinaSlug = resolveMarinaSlug(req) || "hara";
+  const baseBoat = await getBoatBySlug(marinaSlug, slug);
   if (!baseBoat) return { notFound: true };
 
   // Overlay any owner-saved settings (display name, owner, color, alarms…).
