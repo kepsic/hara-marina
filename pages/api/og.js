@@ -10,15 +10,24 @@ export const config = { runtime: "edge" };
 //   title    – primary line, e.g. boat name
 //   subtitle – secondary line, e.g. "on Hara Marina"
 //   badge    – top-left tag, e.g. "BOAT", "MARINA", "MERVARE"
+//   hero     – absolute https URL of a photo to use as the card background.
+//              When set, the boat's hero image fills the canvas (object-fit
+//              cover) and a dark gradient overlay keeps the title readable.
 //
-// We deliberately avoid fetching anything (no DB, no Redis): the endpoint
-// runs on the edge and must stay fast & cheap. All real data is passed in
-// the URL by the calling page.
+// We deliberately avoid hitting our DB / Redis: the endpoint runs on the
+// edge and must stay fast & cheap. All real data is passed in the URL by
+// the calling page.
 export default function handler(req) {
   const { searchParams } = new URL(req.url);
   const title = (searchParams.get("title") || "Hara Marina").slice(0, 80);
   const subtitle = (searchParams.get("subtitle") || "").slice(0, 120);
   const badge = (searchParams.get("badge") || "MerVare").slice(0, 24);
+
+  // Only honour http(s) URLs; anything else (data: URIs, javascript:, …)
+  // would be a vector for rendering attacker content into our brand.
+  const heroRaw = searchParams.get("hero") || "";
+  const hero =
+    /^https?:\/\//i.test(heroRaw) && heroRaw.length < 2048 ? heroRaw : "";
 
   return new ImageResponse(
     (
@@ -34,8 +43,42 @@ export default function handler(req) {
             "radial-gradient(ellipse at 25% 18%, #0d3050 0%, #061320 70%)",
           color: "#e8f4f8",
           fontFamily: "Georgia, 'Times New Roman', serif",
+          position: "relative",
         }}
       >
+        {/* hero photo background (when provided) — full-bleed cover with a
+            dark gradient overlay so white text stays readable on any image */}
+        {hero ? (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={hero}
+              alt=""
+              width={1200}
+              height={630}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                objectPosition: "center",
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                height: "100%",
+                background:
+                  "linear-gradient(180deg, rgba(6,19,32,0.55) 0%, rgba(6,19,32,0.25) 38%, rgba(6,19,32,0.85) 100%)",
+              }}
+            />
+          </>
+        ) : null}
         {/* top row: badge + brand */}
         <div
           style={{

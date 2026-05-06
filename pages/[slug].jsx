@@ -119,6 +119,7 @@ export default function BoatPage({ initialBoat, viewerEmail, accessKind = "owner
     title: initialBoat.name,
     subtitle: ogSubtitle,
     badge: "Boat",
+    hero: initialBoat.hero_url || null,
   });
   const canonicalUrl = siteUrl ? `${siteUrl.replace(/\/+$/, "")}/${slug}` : "";
   const [tel, setTel] = useState(null);
