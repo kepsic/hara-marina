@@ -145,7 +145,7 @@ export default function BoatWindRose({
   const ticks = Array.from({ length: 36 }, (_, i) => i * 10);
 
   return (
-    <svg width="100%" height="auto" viewBox={`0 0 ${size} ${size}`}
+    <svg width="100%" viewBox={`0 0 ${size} ${size}`}
          style={{ display: "block", maxWidth: size, width: "100%", height: "auto" }}>
       <defs>
         <radialGradient id="windRoseBg" cx="50%" cy="50%" r="50%">

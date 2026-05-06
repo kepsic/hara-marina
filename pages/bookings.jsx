@@ -252,8 +252,11 @@ function StripePayoutsButton({ marinaSlug }) {
       const r = await fetch(`/api/stripe/connect/onboard${qs}`);
       if (r.status === 404) { setState({ status: "none" }); return; }
       if (r.status === 501) { setState({ status: "disabled" }); return; }
-      const j = await r.json();
-      if (!r.ok) { setState({ status: "error", error: j?.error || "failed" }); return; }
+      if (r.status === 403) { setState({ status: "forbidden" }); return; }
+      const txt = await r.text();
+      let j = null;
+      try { j = txt ? JSON.parse(txt) : null; } catch { /* HTML error page */ }
+      if (!r.ok) { setState({ status: "error", error: j?.error || `HTTP ${r.status}` }); return; }
       setState({ status: "linked", account: j });
     } catch (e) {
       setState({ status: "error", error: e.message });
@@ -270,9 +273,11 @@ function StripePayoutsButton({ marinaSlug }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(marinaSlug ? { marinaSlug } : {}),
       });
-      const j = await r.json();
-      if (r.ok && j.url) { window.location.assign(j.url); return; }
-      alert(j?.error || "onboarding failed");
+      const txt = await r.text();
+      let j = null;
+      try { j = txt ? JSON.parse(txt) : null; } catch { /* HTML error page */ }
+      if (r.ok && j?.url) { window.location.assign(j.url); return; }
+      alert(j?.error || `Onboarding failed (HTTP ${r.status})`);
     } finally {
       setState((s) => ({ ...s, busy: false }));
     }
