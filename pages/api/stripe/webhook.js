@@ -76,6 +76,31 @@ export default async function handler(req, res) {
         );
       }
     }
+    if (event.type === "checkout.session.completed") {
+      // Hosted-Checkout path. The PaymentIntent will *also* fire
+      // payment_intent.succeeded with the same metadata (we set it via
+      // payment_intent_data.metadata), but we update from the session too in
+      // case the PI event is delayed or filtered upstream.
+      const sess = event.data.object;
+      const bookingId = sess.metadata?.bookingId;
+      if (bookingId && sess.payment_status === "paid") {
+        await updateBooking(bookingId, {
+          paymentStatus: "paid",
+          status: "confirmed",
+          stripePaymentIntent: typeof sess.payment_intent === "string" ? sess.payment_intent : null,
+        }).catch((e) => console.error("[stripe-webhook] checkout completed:", e?.message || e));
+      }
+    }
+    if (event.type === "checkout.session.expired") {
+      const sess = event.data.object;
+      const bookingId = sess.metadata?.bookingId;
+      if (bookingId) {
+        // Don't auto-cancel the booking — the harbor master may still want to
+        // accept it and bill offline. Just clear the session id so the guest
+        // can be sent a fresh Checkout link.
+        await updateBooking(bookingId, { stripeCheckoutSessionId: null }).catch(() => null);
+      }
+    }
     if (event.type === "payment_intent.payment_failed") {
       const intent = event.data.object;
       const bookingId = intent.metadata?.bookingId;

@@ -105,8 +105,26 @@ export default function BookingWizardModal({ open, onClose, slot, marinaSlug, on
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j?.error || "Booking failed");
-      setSubmittedBooking(j.booking);
       onCreated?.(j.booking);
+
+      // Try to send the guest straight to Stripe Checkout. If Stripe isn't
+      // configured (501) or the call fails for any other reason, fall back
+      // to the original "we'll email you" success card so the booking is
+      // never lost.
+      try {
+        const c = await fetch(`/api/bookings/${encodeURIComponent(j.booking.id)}/checkout`, { method: "POST" });
+        if (c.ok) {
+          const cj = await c.json();
+          if (cj?.url) {
+            window.location.assign(cj.url);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn("[booking] checkout redirect failed, falling back:", e);
+      }
+
+      setSubmittedBooking(j.booking);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -131,7 +149,7 @@ export default function BookingWizardModal({ open, onClose, slot, marinaSlug, on
           <div>
             <div style={{ background: "rgba(80,200,120,0.15)", border: "1px solid rgba(80,200,120,0.4)", padding: 12, borderRadius: 8, marginBottom: 12 }}>
               <b>Booking request received.</b> A receipt was sent to <b>{submittedBooking.email}</b>.
-              The harbor master will review and confirm shortly — you'll get a second email with arrival instructions, the harbor master's phone number, and payment details.
+              Stripe checkout was unavailable, so the harbor master will email you payment instructions and confirm the berth manually.
             </div>
             <div style={{ fontSize: 13, color: "#7eabc8" }}>
               Reference: <code>{submittedBooking.id}</code>
@@ -241,12 +259,12 @@ export default function BookingWizardModal({ open, onClose, slot, marinaSlug, on
                   Total: <b>{quote ? `${(quote.totalCents / 100).toFixed(2)} ${quote.currency}` : "—"}</b>{" "}
                   <span style={{ color: "#7eabc8", fontSize: 11 }}>(electricity included)</span>
                   <div style={{ color: "#7eabc8", fontSize: 11, marginTop: 4 }}>
-                    Pay at the harbour shop on arrival, or by bank transfer — details will be in your confirmation email.
+                    You'll be redirected to Stripe to pay securely. Card payment confirms the berth instantly.
                   </div>
                 </div>
                 <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
                   <input type="checkbox" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
-                  I understand this is a request — the harbor master will confirm by email.
+                  I agree to the marina's terms and authorise the card payment.
                 </label>
                 {error && <div style={{ color: "#e8b090" }}>{error}</div>}
               </div>
@@ -266,7 +284,7 @@ export default function BookingWizardModal({ open, onClose, slot, marinaSlug, on
                 </button>
               ) : (
                 <button onClick={submit} disabled={!accepted || submitting} style={{ ...btnPrimary, opacity: (!accepted || submitting) ? 0.5 : 1 }}>
-                  {submitting ? "Submitting…" : "Request booking"}
+                  {submitting ? "Redirecting to Stripe…" : "Pay & confirm"}
                 </button>
               )}
             </div>
