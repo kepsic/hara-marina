@@ -7,6 +7,46 @@ import BoatWindRose from "../components/BoatWindRose";
 
 const MarinaMapView = dynamic(() => import("../components/MarinaMapView"), { ssr: false });
 
+export async function getServerSideProps({ req }) {
+  const { resolveMarinaSlug } = await import("../lib/marinaContext");
+  const slug = resolveMarinaSlug(req);
+  if (slug) {
+    // Subdomain / configured marina → render the marina dashboard.
+    return { props: { discoveryMode: false, marinaSlug: slug, marinas: [] } };
+  }
+  // Root domain → load all active marinas for the discovery map.
+  let marinas = [];
+  try {
+    const { getSupabase } = await import("../lib/supabase");
+    const sb = getSupabase();
+    if (sb) {
+      const { data } = await sb
+        .from("marinas")
+        .select("slug, name, lat, lon, country, plan")
+        .eq("active", true)
+        .order("name", { ascending: true });
+      marinas = (data || []).map((m) => ({
+        slug: m.slug, name: m.name, lat: Number(m.lat), lon: Number(m.lon),
+        country: m.country, plan: m.plan,
+      }));
+    }
+  } catch (e) {
+    console.error("[index ssr] marinas fetch failed:", e?.message || e);
+  }
+  if (marinas.length === 0) {
+    // Always show at least Hara so the root domain is never empty.
+    marinas = [{
+      slug: "hara",
+      name: process.env.MARINA_NAME || "Hara Sadam",
+      lat: Number(process.env.HARA_MARINA_LAT || 59.5881254),
+      lon: Number(process.env.HARA_MARINA_LON || 25.6124356),
+      country: "EE",
+      plan: "free",
+    }];
+  }
+  return { props: { discoveryMode: true, marinas } };
+}
+
 const DOCK_SECTIONS = [
   { id: "A", boats: [1, 2, 3] },
   { id: "B", boats: [4, 5, 6, 7] },
@@ -107,7 +147,64 @@ function Field({label, fieldKey, placeholder, editMode, draft, setDraft}) {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-export default function HaraMarina() {
+export default function IndexPage({ discoveryMode = false, marinas = [] }) {
+  if (discoveryMode) {
+    return <MarinaDiscoveryPage marinas={marinas} />;
+  }
+  return <HaraMarina />;
+}
+
+const MarinaDiscoveryMap = dynamic(
+  () => import("../components/MarinaDiscoveryMap"),
+  { ssr: false, loading: () => null }
+);
+
+function MarinaDiscoveryPage({ marinas }) {
+  return (
+    <>
+      <Head>
+        <title>MerVare — find your next berth</title>
+        <meta name="description" content="Discover marinas across the Baltic and book a guest berth in seconds." />
+      </Head>
+      <div style={{
+        position: "fixed", inset: 0,
+        background: "linear-gradient(180deg,#091820 0%,#0d2438 100%)",
+        color: "#e8f4f8",
+        display: "flex", flexDirection: "column",
+      }}>
+        <header style={{
+          padding: "14px 20px",
+          borderBottom: "1px solid rgba(126,171,200,0.15)",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          background: "rgba(9,24,32,0.85)",
+          backdropFilter: "blur(8px)",
+        }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+            <span style={{ fontSize: 22, fontWeight: 700, letterSpacing: 1 }}>⚓ MerVare</span>
+            <span style={{ color: "#7eabc8", fontSize: 12 }}>marinas, simplified</span>
+          </div>
+          <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+            <Link href="/marina-signup" style={{ color: "#9bd1f0", textDecoration: "none", fontSize: 13 }}>
+              List your marina
+            </Link>
+            <Link href="/login" style={{
+              background: "#1e6fa8", color: "#fff", padding: "7px 14px", borderRadius: 6,
+              fontSize: 13, fontWeight: 600, textDecoration: "none",
+            }}>
+              Sign in
+            </Link>
+          </div>
+        </header>
+        <main style={{ flex: 1, position: "relative" }}>
+          <MarinaDiscoveryMap marinas={marinas} />
+        </main>
+      </div>
+    </>
+  );
+}
+
+// ── Hara Marina dashboard (existing) ──────────────────────────────────────────
+function HaraMarina() {
   const [boats,      setBoats]      = useState(INITIAL_BOATS);
   const [queue,      setQueue]      = useState([]);
   const [view,       setView]       = useState("marina");
